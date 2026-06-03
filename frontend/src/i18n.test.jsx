@@ -11,6 +11,8 @@ function Probe() {
       <span data-testid="lang">{lang}</span>
       <span data-testid="title">{t('auth.loginTitle')}</span>
       <span data-testid="count">{t('notes.deleteSelected', { count: 3 })}</span>
+      <span data-testid="tg">{t('settings.telegramTitle')}</span>
+      <span data-testid="exp">{t('settings.exportAll')}</span>
       <button onClick={() => setLang('ru')}>switch</button>
     </div>
   );
@@ -47,5 +49,19 @@ describe('i18n', () => {
     expect(screen.getByTestId('lang')).toHaveTextContent('ru');
     expect(screen.getByTestId('title')).toHaveTextContent('С возвращением');
     expect(localStorage.getItem('notes_lang')).toBe('ru');
+  });
+
+  it('has the new telegram + export strings in both EN and RU', async () => {
+    const user = userEvent.setup();
+    render(
+      <LangProvider>
+        <Probe />
+      </LangProvider>
+    );
+    expect(screen.getByTestId('tg')).toHaveTextContent('Telegram reminders');
+    expect(screen.getByTestId('exp')).toHaveTextContent('Export all (.zip)');
+    await act(() => user.click(screen.getByText('switch')));
+    expect(screen.getByTestId('tg')).toHaveTextContent('Напоминания в Telegram');
+    expect(screen.getByTestId('exp')).toHaveTextContent('Экспортировать всё (.zip)');
   });
 });

@@ -5,6 +5,7 @@ import Register from './pages/Register.jsx';
 import Notes from './pages/Notes.jsx';
 import Calendar from './pages/Calendar.jsx';
 import Settings from './pages/Settings.jsx';
+import Share from './pages/Share.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import LanguageToggle from './components/LanguageToggle.jsx';
 import HelpOverlay from './components/HelpOverlay.jsx';
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/notes" element={<RequireAuth><Notes registerAction={setPendingAction} /></RequireAuth>} />
           <Route path="/calendar" element={<RequireAuth><Calendar /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+          <Route path="/share/:token" element={<Share />} />
           <Route path="*" element={<Navigate to={isAuthenticated() ? '/notes' : '/login'} replace />} />
         </Routes>
       </main>

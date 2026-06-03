@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import MarkdownToolbar from './MarkdownToolbar.jsx';
+import { api } from '../api.js';
 import { useLang } from '../i18n.jsx';
 
 function emptyNote() {
@@ -14,17 +15,64 @@ const NoteEditor = forwardRef(function NoteEditor(
   const { t } = useLang();
   const [draft, setDraft] = useState(emptyNote());
   const [tagsInput, setTagsInput] = useState('');
+  const [exportError, setExportError] = useState(null);
+  const [shareToken, setShareToken] = useState(null);
+  const [copied, setCopied] = useState(false);
   const formRef = useRef(null);
   const contentRef = useRef(null);
+
+  const exportMd = async () => {
+    setExportError(null);
+    try {
+      await api.exportNote(note.id);
+    } catch (err) {
+      setExportError(err.message);
+    }
+  };
+
+  const doShare = async () => {
+    setExportError(null);
+    try {
+      const { token } = await api.shareNote(note.id);
+      setShareToken(token);
+      setCopied(false);
+    } catch (err) {
+      setExportError(err.message);
+    }
+  };
+
+  const doUnshare = async () => {
+    setExportError(null);
+    try {
+      await api.unshareNote(note.id);
+      setShareToken(null);
+      setCopied(false);
+    } catch (err) {
+      setExportError(err.message);
+    }
+  };
+
+  const shareUrl = shareToken ? `${window.location.origin}/share/${shareToken}` : '';
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+    } catch {
+      // clipboard may be unavailable; the link is visible to copy manually.
+    }
+  };
 
   useEffect(() => {
     if (note) {
       setDraft({ ...note });
       setTagsInput((note.tags || []).join(', '));
+      setShareToken(note.public_token ?? null);
     } else {
       setDraft(emptyNote());
       setTagsInput('');
+      setShareToken(null);
     }
+    setCopied(false);
   }, [note]);
 
   useImperativeHandle(ref, () => ({
@@ -111,9 +159,37 @@ const NoteEditor = forwardRef(function NoteEditor(
           <ReactMarkdown>{draft.content || t('editor.previewEmpty')}</ReactMarkdown>
         </div>
       </div>
+      {isPersisted && (
+        <div className="share-row">
+          {shareToken ? (
+            <>
+              <span className="share-label">{t('editor.publicLink')}:</span>
+              <a className="share-url" href={`/share/${shareToken}`} target="_blank" rel="noreferrer">
+                {shareUrl}
+              </a>
+              <button type="button" className="btn btn-ghost" onClick={copyLink}>
+                {copied ? t('editor.copied') : t('editor.copy')}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={doUnshare}>
+                {t('editor.unshare')}
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn btn-ghost" onClick={doShare}>
+              {t('editor.share')}
+            </button>
+          )}
+        </div>
+      )}
       <div className="actions">
         <button type="submit" className="btn btn-primary">{t('editor.save')}</button>
         {onCancel && <button type="button" className="btn btn-ghost" onClick={onCancel}>{t('editor.cancel')}</button>}
+        {isPersisted && (
+          <button type="button" className="btn btn-ghost" onClick={exportMd}>
+            {t('editor.exportMd')}
+          </button>
+        )}
+        {exportError && <div className="error">{exportError}</div>}
         <div className="spacer" />
         {note && onDelete && (
           <button
