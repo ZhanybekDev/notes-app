@@ -34,9 +34,25 @@ class NoteOut(BaseModel):
     note_date: date | None
     archived_at: datetime | None
     pinned_at: datetime | None
+    public_token: str | None
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class SharedNoteOut(BaseModel):
+    """Public, read-only projection of a note - deliberately omits ids and owner."""
+
+    title: str
+    content: str
+    tags: list[str]
+    note_date: date | None
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShareOut(BaseModel):
+    token: str
 
 
 class NotesPage(BaseModel):
@@ -66,3 +82,19 @@ class DeleteAccountIn(BaseModel):
 
 class OkOut(BaseModel):
     ok: bool = True
+
+
+class TelegramStatusOut(BaseModel):
+    linked: bool
+    enabled: bool
+    timezone: str
+    bot_configured: bool
+    link_url: str | None = None
+
+
+class TelegramRemindersIn(BaseModel):
+    enabled: bool
+
+
+class TimezoneIn(BaseModel):
+    timezone: str = Field(min_length=1, max_length=64)
