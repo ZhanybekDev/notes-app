@@ -21,8 +21,9 @@ graph LR
 | `db`       | Postgres 16                                        | 5432 | Durable storage                             |
 | `backend`  | Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, JWT | 8000 | REST API, auth, data access                 |
 | `frontend` | React 18, Vite, React Router                       | 5173 | SPA; dev server proxies `/api` to `backend` |
+| `worker`   | Python 3.11, APScheduler (same image as `backend`) | -    | Background reminders + Telegram `getUpdates` poll |
 
-All three are orchestrated by `docker-compose.yml`. The frontend talks to the backend through the Vite dev proxy — there is no direct browser → backend call in dev.
+All four are orchestrated by `docker-compose.yml`. The frontend talks to the backend through the Vite dev proxy — there is no direct browser → backend call in dev.
 
 ## Components & responsibilities
 
@@ -189,6 +190,15 @@ All paths are prefixed with `/api`. JWT is required everywhere except register/l
 | POST                | `/notes/bulk-delete`     | Body: `{"ids": [int]}`                                  |
 | GET                 | `/notes/calendar`        | `year`, `month`; excludes archived                      |
 | GET                 | `/tags`                  | Distinct tag list for the user                          |
+| GET                 | `/account/telegram`      | Telegram link + reminder status                         |
+| POST                | `/account/telegram/link` | Issue a one-time deep-link code (503 if bot unconfigured) |
+| DELETE              | `/account/telegram`      | Unlink chat + disable reminders                         |
+| PUT                 | `/account/telegram/reminders` | `{enabled}`; 409 if no chat linked                 |
+| PUT                 | `/account/telegram/timezone`  | `{timezone}`; IANA-validated                       |
+| GET                 | `/export/note/{id}`      | Markdown attachment (timestamped filename)              |
+| GET                 | `/export/notes`          | Zip of all the user's notes as `.md`                    |
+| POST / DELETE       | `/notes/{id}/share`      | Create / revoke a public read-only token                |
+| GET                 | `/share/{token}`         | **Public, no auth** — read-only note projection         |
 | GET                 | `/healthz`               | Liveness                                                |
 
 The full machine-readable schema lives at `backend/openapi.json`. Regenerate with `make openapi-dump`; a drift test in the backend suite fails if the committed snapshot is stale.
@@ -201,3 +211,17 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
 - **i18n** — two languages (`en`, `ru`); EN is the fallback when a key is missing.
 - **Theming** — `data-theme="light|dark"` on `<html>`; `system` resolves from `prefers-color-scheme`.
 - **Testing boundary** — backend uses SQLite in tests; any Postgres-specific SQL must stay behind SQLAlchemy or be called out.
+
+## Telegram reminders, export & sharing
+
+A note's `note_date` now does something when it arrives: the owner gets a Telegram message.
+
+- **Background work lives in a separate `worker` service**, not in `backend`. The API process is a single `uvicorn --reload`; a scheduler in-process would fight the reloader and there can be only one `getUpdates` consumer. The worker shares the backend image and runs `scripts/worker.py`: an APScheduler interval job (`process_due`) plus a `getUpdates` long-poll for account linking. With no `TELEGRAM_BOT_TOKEN` it validates nothing and idles, so `make up` still works.
+- **Linking** is a deep link: `POST /account/telegram/link` issues a short-lived one-time code, the UI shows `t.me/<bot>?start=<code>`, the user presses Start, and the worker binds that chat to the account. Code is single-use and expires in 15 min.
+- **"Date arrived" = start of that day in the user's timezone.** `note_date` is a bare `DATE`; each user has a `timezone` and the due check is `note_date <= today-in-that-zone` (`zoneinfo`).
+- **Idempotency is claim-first.** Delivery is gated by a `reminders_sent` row with `UNIQUE(note_id, note_date)`: the worker inserts+commits the claim *before* sending, so a concurrent tick or a second worker that loses the insert race never sends. A send that fails every retry deletes its claim and is retried next tick. Net guarantee: never twice (at-most-once on the failure path).
+- **Retries**: bounded exponential backoff inside `_deliver`; the Telegram client (`app/telegram.py`) is a thin httpx wrapper kept out of `reminders.py` so the core is unit-testable with a fake sender.
+- **Export** (`routers/export.py`): a note as `.md` or all notes as a `.zip`, timestamped filenames, owner-scoped.
+- **Public sharing** (`routers/share.py`): `POST /notes/{id}/share` mints a `public_token`; `GET /share/{token}` is the one unauthenticated route, returning a deliberately narrow `SharedNoteOut` (no ids, no owner). Revoke clears the token.
+
+New env vars (all optional, in `.env.example`): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `REMINDER_INTERVAL_SECONDS`.
