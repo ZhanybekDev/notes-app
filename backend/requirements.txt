@@ -12,4 +12,5 @@ PyJWT>=2.8
 pytest>=7.4
 pytest-cov>=4.1
 httpx>=0.26
-ruff>=0.5
+apscheduler>=3.10,<4
+ruff==0.15.15

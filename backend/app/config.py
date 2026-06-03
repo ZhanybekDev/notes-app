@@ -18,7 +18,16 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24
     cors_origins: str = "http://localhost:5173"
 
+    # Telegram reminders (all optional - feature degrades gracefully when unset).
+    telegram_bot_token: str | None = None
+    telegram_bot_username: str | None = None
+    reminder_interval_seconds: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def telegram_configured(self) -> bool:
+        return bool(self.telegram_bot_token)
 
     @field_validator("jwt_secret")
     @classmethod
