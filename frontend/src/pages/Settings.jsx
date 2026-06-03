@@ -75,9 +75,29 @@ export default function Settings() {
   const linkTelegram = async () => {
     setTgError(null);
     try {
-      setTg(await api.linkTelegram());
+      const status = await api.linkTelegram();
+      setTg(status);
+      if (status.link_url) window.open(status.link_url, '_blank', 'noopener');
     } catch (err) {
       setTgError(err.message);
+    }
+  };
+
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshStatus = async () => {
+    setTgError(null);
+    setRefreshing(true);
+    try {
+      // keep the spin visible briefly even when the request is instant
+      const [status] = await Promise.all([
+        api.getTelegramStatus(),
+        new Promise((r) => setTimeout(r, 600)),
+      ]);
+      setTg(status);
+    } catch (err) {
+      setTgError(err.message);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -166,15 +186,35 @@ export default function Settings() {
         {tg && tg.bot_configured && (
           <div className="telegram-controls">
             <div className="telegram-status">
+              <span className={`status-dot${tg.linked ? ' on' : ''}`} />
               {tg.linked ? t('settings.telegramLinked') : t('settings.telegramNotLinked')}
+              <button
+                type="button"
+                className={`icon-btn${refreshing ? ' spinning' : ''}`}
+                onClick={refreshStatus}
+                disabled={refreshing}
+                title={t('settings.telegramRefresh')}
+                aria-label={t('settings.telegramRefresh')}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                  <path d="M3 21v-5h5" />
+                </svg>
+              </button>
             </div>
 
             {tg.linked ? (
-              <button type="button" className="btn btn-ghost" onClick={unlinkTelegram}>
+              <button type="button" className="btn btn-danger" onClick={unlinkTelegram}>
                 {t('settings.telegramUnlink')}
               </button>
             ) : (
-              <button type="button" className="btn btn-primary" onClick={linkTelegram}>
+              <button type="button" className="btn btn-primary tg-link-btn" onClick={linkTelegram}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m22 2-7 20-4-9-9-4Z" />
+                  <path d="M22 2 11 13" />
+                </svg>
                 {t('settings.telegramLink')}
               </button>
             )}

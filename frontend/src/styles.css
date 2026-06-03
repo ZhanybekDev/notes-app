@@ -968,6 +968,144 @@ kbd {
   color: var(--text-muted);
 }
 .settings-card button[type="submit"] { align-self: flex-start; }
+
+/* Telegram reminders toggle: inline label + custom checkbox */
+.settings-card label.telegram-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.telegram-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.telegram-toggle input[type="checkbox"]::before {
+  content: "";
+  width: 0.62rem;
+  height: 0.62rem;
+  transform: scale(0);
+  transition: transform 0.12s ease;
+  background: #fff;
+  clip-path: polygon(14% 44%, 0 65%, 43% 100%, 100% 16%, 84% 0, 39% 71%);
+}
+.telegram-toggle input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.telegram-toggle input[type="checkbox"]:checked::before { transform: scale(1); }
+.telegram-toggle input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.telegram-toggle input[type="checkbox"]:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Timezone select styled like a text input, with a custom chevron */
+.settings-card select {
+  font: inherit;
+  color: var(--text);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 2rem 0.55rem 0.75rem;
+  min-width: 14rem;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a8f98' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.settings-card select:hover { border-color: var(--border-strong); }
+.settings-card select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.settings-card select:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Telegram controls layout + status */
+.telegram-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin-top: 0.15rem;
+}
+.telegram-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-muted);
+  box-shadow: 0 0 0 3px rgba(138, 143, 152, 0.15);
+}
+.status-dot.on {
+  background: #12b981;
+  box-shadow: 0 0 0 3px rgba(18, 185, 129, 0.2);
+}
+.tg-link-btn { display: inline-flex; align-items: center; gap: 0.5rem; }
+.tg-link-btn svg { width: 1rem; height: 1rem; }
+.telegram-status .icon-btn {
+  display: inline-grid;
+  place-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.telegram-status .icon-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.telegram-status .icon-btn:disabled { cursor: default; }
+.telegram-status .icon-btn svg { width: 0.9rem; height: 0.9rem; }
+.telegram-status .icon-btn.spinning svg { animation: tg-spin 0.7s linear infinite; }
+@keyframes tg-spin { to { transform: rotate(360deg); } }
+.telegram-link-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.telegram-link-hint .settings-hint { margin: 0; }
+.telegram-link-hint a { color: var(--accent); word-break: break-all; font-size: 0.85rem; }
+.timezone-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 1.15rem;
+  padding-top: 1.15rem;
+  border-top: 1px solid var(--border);
+}
+.timezone-control h3 { margin: 0; }
+
 .success {
   background: rgba(18, 185, 129, 0.14);
   color: var(--success);
