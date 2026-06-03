@@ -9,9 +9,23 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app import deps
+from app.config import settings
 from app.db import Base
 from app.main import app
 from app.rate_limit import reset_auth_rate_limits
+
+
+@pytest.fixture(autouse=True)
+def _isolate_telegram_env():
+    """Keep tests hermetic: ignore any ambient TELEGRAM_BOT_* env on the host.
+
+    Tests that need a configured bot opt in by setting these explicitly.
+    """
+    original = (settings.telegram_bot_token, settings.telegram_bot_username)
+    settings.telegram_bot_token = None
+    settings.telegram_bot_username = None
+    yield
+    settings.telegram_bot_token, settings.telegram_bot_username = original
 
 
 @pytest.fixture()
