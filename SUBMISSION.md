@@ -1,6 +1,11 @@
 1. форк
 github.com/selimdev00/notes-app, ветка feat/telegram-reminders
 
+демо:
+- бот реально шлёт (login + привязка telegram + доставка): docs/media/demo-bot.mp4
+- терминал (quickstart + все DoD-гейты зелёные): docs/media/terminal-demo.mp4
+- пошагово руками: DEMO.md
+
 2. чем делал
 claude-code на opus. весь цикл на нём - код, тесты, локальный запуск в docker и живая проверка end-to-end через браузер с реальным ботом.
 
