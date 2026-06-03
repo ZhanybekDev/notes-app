@@ -1,8 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { clearToken } from '../auth.js';
 import { useLang } from '../i18n.jsx';
+
+// A small, common subset is enough for the demo; the backend accepts any IANA zone.
+const TIMEZONES = [
+  'UTC',
+  'Europe/London',
+  'Europe/Berlin',
+  'Europe/Moscow',
+  'Asia/Ashgabat',
+  'Asia/Dubai',
+  'Asia/Almaty',
+  'Asia/Tokyo',
+  'America/New_York',
+  'America/Los_Angeles',
+];
 
 export default function Settings() {
   const { t } = useLang();
@@ -15,6 +29,21 @@ export default function Settings() {
 
   const [deletePw, setDeletePw] = useState('');
   const [deleteError, setDeleteError] = useState(null);
+
+  const [tg, setTg] = useState(null);
+  const [tgError, setTgError] = useState(null);
+  const [tzSaved, setTzSaved] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .getTelegramStatus()
+      .then((s) => active && setTg(s))
+      .catch((err) => active && setTgError(err.message));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const changePassword = async (e) => {
     e.preventDefault();
@@ -40,6 +69,55 @@ export default function Settings() {
       navigate('/login', { replace: true });
     } catch (err) {
       setDeleteError(err.message);
+    }
+  };
+
+  const linkTelegram = async () => {
+    setTgError(null);
+    try {
+      setTg(await api.linkTelegram());
+    } catch (err) {
+      setTgError(err.message);
+    }
+  };
+
+  const unlinkTelegram = async () => {
+    setTgError(null);
+    try {
+      await api.unlinkTelegram();
+      setTg(await api.getTelegramStatus());
+    } catch (err) {
+      setTgError(err.message);
+    }
+  };
+
+  const toggleReminders = async (e) => {
+    setTgError(null);
+    try {
+      setTg(await api.setTelegramReminders(e.target.checked));
+    } catch (err) {
+      setTgError(err.message);
+    }
+  };
+
+  const changeTimezone = async (e) => {
+    setTgError(null);
+    setTzSaved(false);
+    try {
+      setTg(await api.setTimezone(e.target.value));
+      setTzSaved(true);
+    } catch (err) {
+      setTgError(err.message);
+    }
+  };
+
+  const [exportError, setExportError] = useState(null);
+  const exportAll = async () => {
+    setExportError(null);
+    try {
+      await api.exportAllNotes();
+    } catch (err) {
+      setExportError(err.message);
     }
   };
 
@@ -75,6 +153,83 @@ export default function Settings() {
           {pwOk && <div className="success">{t('settings.passwordChanged')}</div>}
           <button type="submit" className="btn btn-primary">{t('settings.submit')}</button>
         </form>
+      </section>
+
+      <section className="settings-card">
+        <h2>{t('settings.telegramTitle')}</h2>
+        <p className="settings-hint">{t('settings.telegramHint')}</p>
+
+        {tg && !tg.bot_configured && (
+          <div className="settings-hint">{t('settings.telegramNotConfigured')}</div>
+        )}
+
+        {tg && tg.bot_configured && (
+          <div className="telegram-controls">
+            <div className="telegram-status">
+              {tg.linked ? t('settings.telegramLinked') : t('settings.telegramNotLinked')}
+            </div>
+
+            {tg.linked ? (
+              <button type="button" className="btn btn-ghost" onClick={unlinkTelegram}>
+                {t('settings.telegramUnlink')}
+              </button>
+            ) : (
+              <button type="button" className="btn btn-primary" onClick={linkTelegram}>
+                {t('settings.telegramLink')}
+              </button>
+            )}
+
+            {tg.link_url && !tg.linked && (
+              <div className="telegram-link-hint">
+                <p className="settings-hint">{t('settings.telegramLinkHint')}</p>
+                <a href={tg.link_url} target="_blank" rel="noreferrer">
+                  {tg.link_url}
+                </a>
+              </div>
+            )}
+
+            <label className="telegram-toggle">
+              <input
+                type="checkbox"
+                checked={tg.enabled}
+                disabled={!tg.linked}
+                onChange={toggleReminders}
+              />
+              {t('settings.telegramReminders')}
+            </label>
+          </div>
+        )}
+
+        <div className="timezone-control">
+          <h3>{t('settings.timezoneTitle')}</h3>
+          <p className="settings-hint">{t('settings.timezoneHint')}</p>
+          <select
+            aria-label={t('settings.timezoneTitle')}
+            value={tg?.timezone || 'UTC'}
+            onChange={changeTimezone}
+            disabled={!tg}
+          >
+            {(tg && !TIMEZONES.includes(tg.timezone) ? [tg.timezone, ...TIMEZONES] : TIMEZONES).map(
+              (z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ),
+            )}
+          </select>
+          {tzSaved && <div className="success">{t('settings.timezoneSaved')}</div>}
+        </div>
+
+        {tgError && <div className="error">{tgError}</div>}
+      </section>
+
+      <section className="settings-card">
+        <h2>{t('settings.exportTitle')}</h2>
+        <p className="settings-hint">{t('settings.exportHint')}</p>
+        <button type="button" className="btn btn-primary" onClick={exportAll}>
+          {t('settings.exportAll')}
+        </button>
+        {exportError && <div className="error">{exportError}</div>}
       </section>
 
       <section className="settings-card danger">
