@@ -45,6 +45,31 @@ function buildQuery(params) {
   return qs.toString() ? `?${qs}` : '';
 }
 
+// Fetch a binary attachment (auth header included) and trigger a browser download.
+async function download(path, fallbackName) {
+  const token = getToken();
+  const res = await fetch(`${BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401) {
+    clearToken();
+    throw new ApiError('Unauthorized', 401);
+  }
+  if (!res.ok) throw new ApiError('Export failed', res.status);
+
+  const blob = await res.blob();
+  const match = /filename="(.+?)"/.exec(res.headers.get('Content-Disposition') || '');
+  const name = match ? match[1] : fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   register: (username, password) =>
     request('/auth/register', { method: 'POST', body: { username, password } }),
@@ -73,4 +98,19 @@ export const api = {
     }),
   deleteAccount: (password) =>
     request('/account', { method: 'DELETE', body: { password } }),
+
+  getTelegramStatus: () => request('/account/telegram'),
+  linkTelegram: () => request('/account/telegram/link', { method: 'POST' }),
+  unlinkTelegram: () => request('/account/telegram', { method: 'DELETE' }),
+  setTelegramReminders: (enabled) =>
+    request('/account/telegram/reminders', { method: 'PUT', body: { enabled } }),
+  setTimezone: (timezone) =>
+    request('/account/telegram/timezone', { method: 'PUT', body: { timezone } }),
+
+  exportNote: (id) => download(`/export/note/${id}`, `note-${id}.md`),
+  exportAllNotes: () => download('/export/notes', 'notes.zip'),
+
+  shareNote: (id) => request(`/notes/${id}/share`, { method: 'POST' }),
+  unshareNote: (id) => request(`/notes/${id}/share`, { method: 'DELETE' }),
+  getSharedNote: (token) => request(`/share/${token}`),
 };
