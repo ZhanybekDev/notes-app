@@ -18,7 +18,12 @@ def seed() -> None:
             db.delete(existing)
             db.commit()
 
-        user = User(username=DEMO_USERNAME, password_hash=hash_password(DEMO_PASSWORD))
+        # timezone drives when a note's reminder fires (start of that day in this zone).
+        user = User(
+            username=DEMO_USERNAME,
+            password_hash=hash_password(DEMO_PASSWORD),
+            timezone="UTC",
+        )
         db.add(user)
         db.flush()
 
@@ -31,6 +36,7 @@ def seed() -> None:
                 tags=["intro"],
                 note_date=None,
             ),
+            # Dated today: once Telegram is linked, this is the note that triggers a reminder.
             Note(
                 user_id=user.id,
                 title="Grocery list",
