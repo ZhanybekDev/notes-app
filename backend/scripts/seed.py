@@ -33,8 +33,8 @@ def seed() -> None:
             ),
             Note(
                 user_id=user.id,
-                title="Grocery list",
-                content="- milk\n- bread\n- eggs",
+                title="Telegram smoke test",
+                content="This demo note is dated for today and should be easy to spot in reminder checks.",
                 tags=["todo", "shopping"],
                 note_date=today,
             ),

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -13,6 +13,15 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    telegram_username: Mapped[str | None] = mapped_column(String(64))
+    telegram_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+    )
+    telegram_link_code: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+    telegram_link_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     notes: Mapped[list["Note"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
@@ -33,6 +42,10 @@ class Note(Base):
     pinned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reminder_sent_for_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

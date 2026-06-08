@@ -71,6 +71,14 @@ export const api = {
       method: 'POST',
       body: { current_password: currentPassword, new_password: newPassword },
     }),
+  getTelegramSettings: () => request('/account/telegram'),
+  generateTelegramLink: () => request('/account/telegram/link', { method: 'POST' }),
+  updateTelegramSettings: (notificationsEnabled) =>
+    request('/account/telegram', {
+      method: 'PUT',
+      body: { notifications_enabled: notificationsEnabled },
+    }),
+  unlinkTelegram: () => request('/account/telegram/unlink', { method: 'POST' }),
   deleteAccount: (password) =>
     request('/account', { method: 'DELETE', body: { password } }),
 };

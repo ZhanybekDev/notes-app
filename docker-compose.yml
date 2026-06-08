@@ -20,16 +20,25 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/notes
-      JWT_SECRET: dev-secret-change-me-please-32bytes
-      CORS_ORIGINS: http://localhost:5173
+    env_file:
+      - ./backend/.env
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  bot:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    command: python -m app.bot_worker run
 
   frontend:
     build: ./frontend

@@ -64,5 +64,22 @@ class DeleteAccountIn(BaseModel):
     password: str
 
 
+class TelegramSettingsIn(BaseModel):
+    notifications_enabled: bool
+
+
+class TelegramSettingsOut(BaseModel):
+    available: bool
+    connected: bool
+    telegram_username: str | None
+    notifications_enabled: bool
+    link_code: str | None
+    link_code_expires_at: datetime | None
+
+
+class TelegramLinkOut(TelegramSettingsOut):
+    pass
+
+
 class OkOut(BaseModel):
     ok: bool = True

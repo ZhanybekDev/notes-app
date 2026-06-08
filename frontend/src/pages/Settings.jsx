@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { clearToken } from '../auth.js';
 import { useLang } from '../i18n.jsx';
 
 export default function Settings() {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const navigate = useNavigate();
 
   const [currentPw, setCurrentPw] = useState('');
@@ -15,6 +15,68 @@ export default function Settings() {
 
   const [deletePw, setDeletePw] = useState('');
   const [deleteError, setDeleteError] = useState(null);
+
+  const [telegram, setTelegram] = useState(null);
+  const [telegramLoading, setTelegramLoading] = useState(true);
+  const [telegramSaving, setTelegramSaving] = useState(false);
+  const [telegramError, setTelegramError] = useState(null);
+  const [telegramSuccess, setTelegramSuccess] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTelegramSettings() {
+      setTelegramLoading(true);
+      setTelegramError(null);
+      try {
+        const next = await api.getTelegramSettings();
+        if (!cancelled) setTelegram(next);
+      } catch (err) {
+        if (!cancelled) setTelegramError(err.message);
+      } finally {
+        if (!cancelled) setTelegramLoading(false);
+      }
+    }
+
+    loadTelegramSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const setTelegramState = (next, successMessage = null) => {
+    setTelegram(next);
+    setTelegramError(null);
+    setTelegramSuccess(successMessage);
+  };
+
+  const runTelegramAction = async (action, successMessage) => {
+    setTelegramSaving(true);
+    setTelegramError(null);
+    setTelegramSuccess(null);
+    try {
+      const next = await action();
+      setTelegramState(next, successMessage);
+    } catch (err) {
+      setTelegramError(err.message);
+    } finally {
+      setTelegramSaving(false);
+    }
+  };
+
+  const formatTelegramExpiry = (value) => {
+    if (!value) return null;
+    return new Intl.DateTimeFormat(lang, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(value));
+  };
+
+  const telegramStatusKey = telegram?.available
+    ? telegram.connected
+      ? 'settings.telegramStatusConnected'
+      : 'settings.telegramStatusDisconnected'
+    : 'settings.telegramStatusUnavailable';
 
   const changePassword = async (e) => {
     e.preventDefault();
@@ -75,6 +137,105 @@ export default function Settings() {
           {pwOk && <div className="success">{t('settings.passwordChanged')}</div>}
           <button type="submit" className="btn btn-primary">{t('settings.submit')}</button>
         </form>
+      </section>
+
+      <section className="settings-card">
+        <h2>{t('settings.telegramTitle')}</h2>
+        <div className="settings-status-row">
+          <span
+            className={[
+              'settings-status-badge',
+              telegram?.available ? (telegram.connected ? 'is-success' : 'is-muted') : 'is-warning',
+            ].join(' ')}
+          >
+            {t(telegramStatusKey)}
+          </span>
+        </div>
+
+        {telegramLoading && <p className="settings-hint">{t('settings.telegramLoading')}</p>}
+        {telegramError && <div className="error">{telegramError}</div>}
+        {telegramSuccess && <div className="success">{telegramSuccess}</div>}
+
+        {!telegramLoading && telegram && (
+          <div className="settings-telegram-box">
+            {!telegram.available && (
+              <p className="settings-hint">{t('settings.telegramUnavailableHint')}</p>
+            )}
+
+            {telegram.available && !telegram.connected && (
+              <>
+                <p className="settings-hint">{t('settings.telegramDisconnectedHint')}</p>
+                {telegram.link_code && (
+                  <div className="settings-telegram-instructions">
+                    <div>{t('settings.telegramInstruction')}</div>
+                    <code className="settings-inline-code">/start {telegram.link_code}</code>
+                    {telegram.link_code_expires_at && (
+                      <div className="settings-hint">
+                        {t('settings.telegramCodeExpires', {
+                          expiresAt: formatTelegramExpiry(telegram.link_code_expires_at),
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="settings-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={telegramSaving}
+                    onClick={() =>
+                      runTelegramAction(
+                        () => api.generateTelegramLink(),
+                        t('settings.telegramCodeGenerated')
+                      )
+                    }
+                  >
+                    {t(telegram.link_code ? 'settings.telegramRefreshCode' : 'settings.telegramGenerateCode')}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {telegram.available && telegram.connected && (
+              <>
+                <p className="settings-hint">
+                  {telegram.telegram_username
+                    ? t('settings.telegramConnectedAs', { username: `@${telegram.telegram_username}` })
+                    : t('settings.telegramConnectedFallback')}
+                </p>
+                <label className="settings-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={telegram.notifications_enabled}
+                    disabled={telegramSaving}
+                    onChange={(e) =>
+                      runTelegramAction(
+                        () => api.updateTelegramSettings(e.target.checked),
+                        t('settings.telegramSettingsSaved')
+                      )
+                    }
+                  />
+                  <span>{t('settings.telegramEnableNotifications')}</span>
+                </label>
+                <div className="settings-actions">
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={telegramSaving}
+                    onClick={() =>
+                      runTelegramAction(
+                        () => api.unlinkTelegram(),
+                        t('settings.telegramUnlinked')
+                      )
+                    }
+                  >
+                    {t('settings.telegramUnlink')}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="settings-card danger">

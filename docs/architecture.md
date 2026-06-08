@@ -9,17 +9,21 @@ graph LR
     user([User])
     ui["Frontend<br/>React + Vite<br/>:5173"]
     api["Backend<br/>FastAPI + SQLAlchemy<br/>:8000"]
+    bot["Bot worker<br/>Telegram polling + reminders"]
     db[("PostgreSQL 16<br/>:5432")]
 
     user -- HTTP --> ui
     ui -- "/api/*<br/>(Vite proxy)" --> api
     api -- SQL --> db
+    bot -- SQL --> db
+    bot -- HTTPS --> tg[(Telegram Bot API)]
 ```
 
 | Service    | Stack                                              | Port | Role                                        |
 | ---------- | -------------------------------------------------- | ---- | ------------------------------------------- |
 | `db`       | Postgres 16                                        | 5432 | Durable storage                             |
 | `backend`  | Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, JWT | 8000 | REST API, auth, data access                 |
+| `bot`      | Python 3.11, httpx                                 | n/a  | Telegram link handling and reminder delivery |
 | `frontend` | React 18, Vite, React Router                       | 5173 | SPA; dev server proxies `/api` to `backend` |
 
 All three are orchestrated by `docker-compose.yml`. The frontend talks to the backend through the Vite dev proxy — there is no direct browser → backend call in dev.
@@ -29,7 +33,8 @@ All three are orchestrated by `docker-compose.yml`. The frontend talks to the ba
 ### Services
 
 - **`db`** — owns all persistent state. No logic lives here beyond schema (managed by Alembic) and ownership indexes. External deps: none. Data volume: `db_data`.
-- **`backend`** — the only component allowed to talk to `db`. Owns authentication (JWT issuing and verification), authorization (per-row `user_id` filtering), domain logic (notes, tags, calendar aggregation, archive/pin semantics, pagination), and request validation (Pydantic). Exposes HTTP only — no background jobs.
+- **`backend`** — the primary HTTP surface. Owns authentication (JWT issuing and verification), authorization (per-row `user_id` filtering), note/account APIs, and request validation (Pydantic).
+- **`bot`** — a separate worker process using the same codebase. Owns Telegram long polling (`/start <code>` linking) and one-shot reminder delivery for due notes. It talks to both Postgres and the Telegram Bot API, but it is intentionally not embedded into the FastAPI app lifecycle.
 - **`frontend`** — a pure SPA. Holds no server state; the JWT in `localStorage` is its only persistent local state. Talks only to `/api/*` via the Vite dev proxy. Owns layout, user interaction, optimistic UX affordances (markdown preview, keyboard shortcuts, calendar rendering).
 
 ### Backend packages
@@ -54,6 +59,9 @@ graph TD
 - **`app/auth.py`** — password hashing (bcrypt) and JWT encoding. Pure functions; no I/O.
 - **`app/deps.py`** — FastAPI dependencies: `get_db` (per-request session lifecycle) and `get_current_user` (JWT → `User`). Every protected route goes through `get_current_user`.
 - **`app/routers/*`** — HTTP surface. Each router owns one area (`auth`, `account`, `notes`, `tags`) and is the **only** place allowed to call the ORM directly. Routers never import each other.
+- **`app/telegram_bot.py`** — low-level Telegram Bot API client built on `httpx`.
+- **`app/reminders.py`** — due-note selection plus reminder rendering/delivery bookkeeping.
+- **`app/bot_worker.py`** — CLI worker entrypoint (`run`, `send-due-once`).
 - **`alembic/versions/*`** — schema migrations, applied at container start. Must be reversible (both `upgrade` and `downgrade`).
 - **`scripts/seed.py`** — idempotent demo data (wipes the demo user, recreates).
 - **`scripts/dump_openapi.py`** — emits `app.openapi()` JSON; drives `make openapi-dump` and the drift test.
@@ -103,6 +111,11 @@ erDiagram
         int id PK
         string username
         string password_hash
+        string telegram_chat_id
+        string telegram_username
+        bool telegram_notifications_enabled
+        string telegram_link_code
+        datetime telegram_link_code_expires_at
         datetime created_at
     }
     NOTES {
@@ -114,6 +127,8 @@ erDiagram
         date note_date
         datetime archived_at
         datetime pinned_at
+        datetime reminder_sent_at
+        date reminder_sent_for_date
         datetime created_at
         datetime updated_at
     }
@@ -136,12 +151,15 @@ backend/
 │   ├── schemas.py      Pydantic in/out schemas
 │   ├── auth.py         bcrypt hashing, JWT encode
 │   ├── deps.py         get_db, get_current_user (JWT → User)
+│   ├── telegram_bot.py Telegram Bot API client
+│   ├── reminders.py    due reminder selection + send bookkeeping
+│   ├── bot_worker.py   background polling worker / demo CLI
 │   └── routers/
 │       ├── auth.py     /auth/register, /auth/login
-│       ├── account.py  /account/change-password, DELETE /account
+│       ├── account.py  /account/change-password, /account/telegram*, DELETE /account
 │       ├── notes.py    /notes CRUD, calendar, archive, pin, bulk-delete
 │       └── tags.py     /tags
-├── alembic/versions/   0001 init · 0002 archive+pin
+├── alembic/versions/   0001 init · 0002 archive+pin · 0003 telegram reminders
 ├── scripts/
 │   ├── seed.py         demo user + sample notes (make seed)
 │   └── dump_openapi.py regenerates openapi.json (make openapi-dump)
@@ -178,6 +196,10 @@ All paths are prefixed with `/api`. JWT is required everywhere except register/l
 | POST                | `/auth/register`         | Public                                                  |
 | POST                | `/auth/login`            | Public; returns JWT                                     |
 | POST                | `/account/change-password` | Verifies current password                             |
+| GET                 | `/account/telegram`      | Telegram availability, connection state, link code      |
+| POST                | `/account/telegram/link` | Generate or refresh a short-lived Telegram link code    |
+| PUT                 | `/account/telegram`      | Toggle Telegram notifications                           |
+| POST                | `/account/telegram/unlink` | Remove Telegram link and disable reminders            |
 | DELETE              | `/account`               | Cascade-deletes all notes of the user                   |
 | GET                 | `/notes`                 | Paginated (`limit`/`offset`), `?archived`, `?q`, `?tag` — pinned first |
 | POST                | `/notes`                 | Create                                                  |
@@ -198,6 +220,7 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
 - **AuthN** — JWT HS256, `JWT_SECRET` from env; token sent as `Authorization: Bearer <token>`.
 - **AuthZ** — ownership check in every route; no roles, no sharing.
 - **Migrations** — Alembic; `alembic upgrade head` runs at backend container startup.
+- **Background work** — the `bot` container handles Telegram polling and due reminder delivery. The web app stays stateless.
 - **i18n** — two languages (`en`, `ru`); EN is the fallback when a key is missing.
 - **Theming** — `data-theme="light|dark"` on `<html>`; `system` resolves from `prefers-color-scheme`.
 - **Testing boundary** — backend uses SQLite in tests; any Postgres-specific SQL must stay behind SQLAlchemy or be called out.

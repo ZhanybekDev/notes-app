@@ -172,6 +172,9 @@ def update_note(
     db: Session = Depends(get_db),
 ) -> Note:
     note = _own_note_or_404(note_id, user, db)
+    if payload.note_date != note.note_date:
+        note.reminder_sent_at = None
+        note.reminder_sent_for_date = None
     note.title = payload.title
     note.content = payload.content
     note.tags = _normalize_tags(payload.tags)

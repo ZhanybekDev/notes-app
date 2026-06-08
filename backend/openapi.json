@@ -308,6 +308,139 @@
         "title": "OkOut",
         "type": "object"
       },
+      "TelegramLinkOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "link_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Code"
+          },
+          "link_code_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Code Expires At"
+          },
+          "notifications_enabled": {
+            "title": "Notifications Enabled",
+            "type": "boolean"
+          },
+          "telegram_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Username"
+          }
+        },
+        "required": [
+          "available",
+          "connected",
+          "telegram_username",
+          "notifications_enabled",
+          "link_code",
+          "link_code_expires_at"
+        ],
+        "title": "TelegramLinkOut",
+        "type": "object"
+      },
+      "TelegramSettingsIn": {
+        "properties": {
+          "notifications_enabled": {
+            "title": "Notifications Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "notifications_enabled"
+        ],
+        "title": "TelegramSettingsIn",
+        "type": "object"
+      },
+      "TelegramSettingsOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "link_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Code"
+          },
+          "link_code_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Code Expires At"
+          },
+          "notifications_enabled": {
+            "title": "Notifications Enabled",
+            "type": "boolean"
+          },
+          "telegram_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Username"
+          }
+        },
+        "required": [
+          "available",
+          "connected",
+          "telegram_username",
+          "notifications_enabled",
+          "link_code",
+          "link_code_expires_at"
+        ],
+        "title": "TelegramSettingsOut",
+        "type": "object"
+      },
       "TokenOut": {
         "properties": {
           "access_token": {
@@ -498,6 +631,128 @@
           }
         ],
         "summary": "Change Password",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/telegram": {
+      "get": {
+        "operationId": "get_telegram_settings_api_account_telegram_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Telegram Settings",
+        "tags": [
+          "account"
+        ]
+      },
+      "put": {
+        "operationId": "update_telegram_settings_api_account_telegram_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Telegram Settings",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/telegram/link": {
+      "post": {
+        "operationId": "generate_telegram_link_api_account_telegram_link_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Generate Telegram Link",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/telegram/unlink": {
+      "post": {
+        "operationId": "unlink_telegram_api_account_telegram_unlink_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Unlink Telegram",
         "tags": [
           "account"
         ]
