@@ -21,6 +21,8 @@ export default function Notes({ registerAction }) {
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [error, setError] = useState(null);
+  // Fetched here rather than in NoteEditor: components stay presentational, pages fetch.
+  const [reminderPrefs, setReminderPrefs] = useState(null);
 
   const searchRef = useRef(null);
   const editorRef = useRef(null);
@@ -49,6 +51,21 @@ export default function Notes({ registerAction }) {
   useEffect(() => {
     load(0, false);
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSettings()
+      .then((prefs) => {
+        if (!cancelled) setReminderPrefs(prefs);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     registerAction?.('newNote', () => { setCreating(true); setSelected(null); });
@@ -229,6 +246,7 @@ export default function Notes({ registerAction }) {
             onDelete={onDelete}
             onPin={onPin}
             onArchive={onArchive}
+            reminderPrefs={reminderPrefs}
           />
         ) : (
           <div className="empty-state">

@@ -1,4 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
+import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import MarkdownToolbar from './MarkdownToolbar.jsx';
 import { useLang } from '../i18n.jsx';
@@ -8,7 +9,7 @@ function emptyNote() {
 }
 
 const NoteEditor = forwardRef(function NoteEditor(
-  { note, onSave, onCancel, onDelete, onPin, onArchive },
+  { note, onSave, onCancel, onDelete, onPin, onArchive, reminderPrefs },
   ref,
 ) {
   const { t } = useLang();
@@ -88,6 +89,18 @@ const NoteEditor = forwardRef(function NoteEditor(
             value={draft.note_date || ''}
             onChange={(e) => setDraft({ ...draft, note_date: e.target.value || null })}
           />
+          {draft.note_date && reminderPrefs && (
+            <span className="reminder-hint">
+              {reminderPrefs.notifications_enabled && reminderPrefs.telegram_linked ? (
+                t('editor.reminderAt', { time: reminderPrefs.reminder_time.slice(0, 5) })
+              ) : (
+                <>
+                  {t('editor.reminderOff')}{' '}
+                  <Link to="/settings">{t('editor.reminderSettingsLink')}</Link>
+                </>
+              )}
+            </span>
+          )}
         </label>
         <label>
           🏷 {t('editor.tags')}
