@@ -39,6 +39,10 @@ class TelegramClient(Protocol):
 
     def send_message(self, chat_id: int, text: str) -> None: ...
 
+    def set_my_commands(
+        self, commands: list[dict[str, str]], language_code: str | None = None
+    ) -> None: ...
+
 
 class HttpTelegramClient:
     def __init__(self, token: str, *, api_root: str = API_ROOT, client: httpx.Client | None = None):
@@ -87,6 +91,14 @@ class HttpTelegramClient:
         # routinely contains unbalanced *, _, [ and backticks. With a parse_mode set the API
         # rejects those with HTTP 400 — the feature would break on real notes only.
         self._call("sendMessage", {"chat_id": chat_id, "text": text}, read_timeout=30.0)
+
+    def set_my_commands(
+        self, commands: list[dict[str, str]], language_code: str | None = None
+    ) -> None:
+        payload: dict[str, Any] = {"commands": commands}
+        if language_code is not None:
+            payload["language_code"] = language_code
+        self._call("setMyCommands", payload, read_timeout=30.0)
 
 
 def build_client() -> HttpTelegramClient:

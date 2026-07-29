@@ -59,6 +59,9 @@ bot; press **Start**. The bot confirms, and reminders are switched on automatica
 zone, and in the language your Telegram client is set to — English or Russian, with English as the
 fallback. Turning the toggle off, unlinking, archiving the note or clearing its date all stop it.
 
+The bot also answers. Press the menu button next to the message box for `/today`, `/upcoming` and
+`/status`, and `/pause` and `/resume` to silence reminders without disconnecting.
+
 Delivery is exactly-once: the reminder is recorded in an outbox keyed by note and date, so a
 restart, a retry after a Telegram rate limit, or a change of time zone cannot produce a second
 message. See `docs/demo.md` for a minute-by-minute walkthrough and `docs/architecture.md` for

@@ -108,3 +108,30 @@ def test_get_updates_omits_offset_when_none():
 def test_empty_token_is_rejected():
     with pytest.raises(TelegramNotConfigured):
         HttpTelegramClient("")
+
+
+def test_set_my_commands_sends_the_language():
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    make_client(handler).set_my_commands(
+        [{"command": "today", "description": "What is dated today"}], language_code="en"
+    )
+
+    assert captured["language_code"] == "en"
+    assert captured["commands"][0]["command"] == "today"
+
+
+def test_set_my_commands_omits_the_language_when_absent():
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    make_client(handler).set_my_commands([{"command": "today", "description": "x"}])
+
+    assert "language_code" not in captured

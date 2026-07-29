@@ -64,7 +64,10 @@ graph TD
 - **`app/telegram.py`** — thin Bot API client (`getUpdates`, `sendMessage`) over `httpx`. Raises `TelegramRetryAfter` for 429 so callers can honour `retry_after` literally. Never sets `parse_mode`: notes are Markdown, and unbalanced markup would make the API reject real notes with 400. The token lives in the request URL, so no error path echoes the URL.
 - **`app/bot_i18n.py`** — message catalogue for everything the bot says, plus the mapping from an
   IETF tag to a language we have. English is the fallback, matching `i18n.jsx`.
-- **`app/telegram_link.py`** — issuing and redeeming `/start` deep-link codes (15-minute TTL, single use). Binding is what turns notifications on; unlinking turns them off.
+- **`app/bot_commands.py`** — the single entry point for an incoming update: parses the command,
+  routes it and renders the reply. Everything the bot says lives here, so there is one place to
+  look for what a user will read.
+- **`app/telegram_link.py`** — issuing and redeeming `/start` deep-link codes (15-minute TTL, single use). Binding is what turns notifications on; unlinking turns them off. Returns a `LinkResult`; the wording that reaches the user belongs to `bot_commands`.
 - **`app/reminders.py`** — reminder scheduling: local-time → UTC conversion, outbox materialisation, resync after settings changes, cancellation of rows whose preconditions lapsed, claiming and marking. Pure domain logic over a `Session`.
 - **`app/deps.py`** — FastAPI dependencies: `get_db` (per-request session lifecycle) and `get_current_user` (JWT → `User`). Every protected route goes through `get_current_user`.
 - **`app/routers/*`** — HTTP surface. Each router owns one area (`auth`, `account`, `notes`, `tags`) and is the **only** place allowed to call the ORM directly. Routers never import each other.
@@ -181,6 +184,7 @@ backend/
 │   ├── deps.py         get_db, get_current_user (JWT → User)
 │   ├── telegram.py     Bot API client (getUpdates, sendMessage)
 │   ├── bot_i18n.py     message catalogue for the bot (en / ru)
+│   ├── bot_commands.py command routing and replies
 │   ├── telegram_link.py deep-link codes, /start redemption
 │   ├── reminders.py    scheduling, outbox reconciliation, delivery bookkeeping
 │   └── routers/
@@ -257,5 +261,8 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
   reminders sent days later read the same way as the confirmation did.
 - **Theming** — `data-theme="light|dark"` on `<html>`; `system` resolves from `prefers-color-scheme`.
 - **Testing boundary** — backend uses SQLite in tests; any Postgres-specific SQL must stay behind SQLAlchemy or be called out. `claim_batch` uses `FOR UPDATE SKIP LOCKED`, which SQLite silently ignores — the locking behaviour is therefore asserted against the compiled Postgres SQL rather than by running two sessions.
+- **Bot commands** — `/today`, `/upcoming`, `/status`, `/pause`, `/resume`, `/help`, published with
+  `setMyCommands` per language. Everything but `/start` and `/help` needs a linked chat; an
+  unlinked one is invited to link rather than told anything about an account.
 - **Reminders** — a note's date fires at the owner's `reminder_time` in their `timezone`. Scheduling converts local → UTC once, at materialisation, and re-derives it whenever settings change. Rows are created up to 48 h ahead and never fire more than 24 h late, so a worker that was down does not flush a backlog.
 - **Configuration** — `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME` reach the containers through `backend/.env`, which pydantic-settings reads directly (`env_file=".env"`, WORKDIR `/app`). They are deliberately *not* declared in compose `environment`: `${VAR:-}` interpolates to an empty string when no root `.env` exists and would silently override the file. Empty values are normalised to `None`, so a copied `.env.example` reads as "not configured" rather than "configured with a blank token".

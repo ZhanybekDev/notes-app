@@ -73,7 +73,7 @@ def test_offset_is_not_advanced_when_the_database_fails(wired, monkeypatch):
     def explode(db, update):
         raise OperationalError("SELECT 1", {}, Exception("connection reset"))
 
-    monkeypatch.setattr(worker.telegram_link, "handle_start_command", explode)
+    monkeypatch.setattr(worker.bot_commands, "handle_update", explode)
     client = RecordingClient([[start_update(7, "whatever")]])
 
     # Offset stays where it was, so Telegram will hand the update back on the next poll.
@@ -85,7 +85,7 @@ def test_failure_does_not_confirm_the_rest_of_the_batch(wired, monkeypatch):
     user = make_user(wired)
     code, _ = issue_link_code(wired, user)
     calls: list[dict] = []
-    real = worker.telegram_link.handle_start_command
+    real = worker.bot_commands.handle_update
 
     def fail_on_second(db, update):
         calls.append(update)
@@ -93,7 +93,7 @@ def test_failure_does_not_confirm_the_rest_of_the_batch(wired, monkeypatch):
             raise OperationalError("SELECT 1", {}, Exception("connection reset"))
         return real(db, update)
 
-    monkeypatch.setattr(worker.telegram_link, "handle_start_command", fail_on_second)
+    monkeypatch.setattr(worker.bot_commands, "handle_update", fail_on_second)
     client = RecordingClient([[start_update(7, code), start_update(8, "x"), start_update(9, "y")]])
 
     # Only the first update is confirmed; 8 and 9 are left for the next poll.
@@ -166,7 +166,7 @@ def test_persistently_failing_update_is_skipped_instead_of_wedging_the_queue(wir
     def always_explode(db, update):
         raise OperationalError("SELECT 1", {}, Exception("poison"))
 
-    monkeypatch.setattr(worker.telegram_link, "handle_start_command", always_explode)
+    monkeypatch.setattr(worker.bot_commands, "handle_update", always_explode)
 
     offsets = []
     for _ in range(worker.MAX_UPDATE_ATTEMPTS):
@@ -182,7 +182,7 @@ def test_persistently_failing_update_is_skipped_instead_of_wedging_the_queue(wir
 def test_failure_counter_resets_after_a_success(wired, monkeypatch):
     user = make_user(wired)
     code, _ = issue_link_code(wired, user)
-    real = worker.telegram_link.handle_start_command
+    real = worker.bot_commands.handle_update
     fail = {"on": True}
 
     def flaky(db, update):
@@ -190,7 +190,7 @@ def test_failure_counter_resets_after_a_success(wired, monkeypatch):
             raise OperationalError("SELECT 1", {}, Exception("blip"))
         return real(db, update)
 
-    monkeypatch.setattr(worker.telegram_link, "handle_start_command", flaky)
+    monkeypatch.setattr(worker.bot_commands, "handle_update", flaky)
     worker.process_updates(RecordingClient([[start_update(11, code)]]), None)
     assert worker._update_failures.get(11) == 1
 
@@ -254,3 +254,26 @@ class TestWaitForSchema:
         worker.wait_for_schema()
 
         assert attempts["n"] == 3
+
+
+class TestMenuRegistration:
+    # No fixture: these drive the client only, and building a schema for them would be waste.
+    def test_registers_every_language(self):
+        from app.bot_i18n import SUPPORTED
+
+        calls: list[str | None] = []
+
+        class Client:
+            def set_my_commands(self, commands, language_code=None):
+                calls.append(language_code)
+
+        worker.register_commands(Client())
+
+        assert sorted(calls) == sorted(SUPPORTED)
+
+    def test_a_failed_registration_does_not_stop_the_worker(self):
+        class Client:
+            def set_my_commands(self, commands, language_code=None):
+                raise TelegramError("nope")
+
+        worker.register_commands(Client())  # must not raise

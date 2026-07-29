@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime, time
 import pytest
 
 import scripts.worker as worker
-from app import reminders
+from app import bot_commands, reminders
 from app.models import Note, Reminder, User
 from app.telegram import TelegramError, TelegramRetryAfter
 
@@ -239,3 +239,19 @@ def test_archiving_after_materialisation_cancels_delivery(wired):
 
     assert client.sent == []
     assert wired.query(Reminder).one().status == Reminder.STATUS_CANCELLED
+
+
+def test_pause_from_the_bot_stops_delivery(wired):
+    seed(wired)  # seed already binds this user to chat 100
+    bot_commands.handle_update(
+        wired,
+        {
+            "update_id": 1,
+            "message": {"chat": {"id": 100}, "from": {"language_code": "en"}, "text": "/pause"},
+        },
+    )
+    client = FakeClient()
+
+    # Proven against the outbox: a reassuring sentence is not evidence a reminder stayed home.
+    assert worker.tick(client, DUE) == 0
+    assert client.sent == []

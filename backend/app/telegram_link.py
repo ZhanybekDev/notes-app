@@ -1,37 +1,32 @@
-"""Domain logic for binding a Telegram chat to an account.
+"""Binding a Telegram chat to an account.
 
-Lives in `app/` rather than `scripts/` on purpose: pytest measures `--cov=app`, so anything
-left inside the worker process is invisible to the coverage gate.
+Account work only. What the user reads lives in `bot_commands`, so there is one place to look for
+the wording and one place to look for the state change.
+
+Lives in `app/` rather than `scripts/` on purpose: pytest measures `--cov=app`, so anything left
+inside the worker process is invisible to the coverage gate.
 """
 
 from __future__ import annotations
 
 import secrets
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from enum import Enum
 
 from sqlalchemy.orm import Session
 
-from .bot_i18n import resolve_language, t
 from .models import User
 
 LINK_CODE_TTL = timedelta(minutes=15)
 _LINK_CODE_BYTES = 32
 
 
-@dataclass(frozen=True)
-class LinkOutcome:
-    """What the worker should reply with, and whether anything was persisted.
+class LinkResult(Enum):
+    """What redeeming a code did. The wording that reaches the user belongs to bot_commands."""
 
-    Carries `chat_id` so the caller does not re-parse the update: doing it twice invited the two
-    extractions to drift, and the worker's copy was the unguarded one.
-    """
-
-    chat_id: int
-    linked: bool
-    reply: str
-    username: str | None = None
+    LINKED = "linked"
+    UNKNOWN_OR_EXPIRED = "unknown_or_expired"
+    CHAT_TAKEN = "chat_taken"
 
 
 def _now() -> datetime:
@@ -59,14 +54,8 @@ def unlink(db: Session, user: User) -> None:
     db.commit()
 
 
-def parse_start_command(text: str | None) -> str | None:
-    """Return the payload of `/start <code>`, or None if this is not such a command."""
-    if not text:
-        return None
-    parts = text.strip().split(maxsplit=1)
-    if not parts or parts[0].split("@")[0] != "/start":
-        return None
-    return parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+def user_for_chat(db: Session, chat_id: int) -> User | None:
+    return db.query(User).filter(User.telegram_chat_id == chat_id).one_or_none()
 
 
 def _expired(user: User, now: datetime) -> bool:
@@ -78,53 +67,29 @@ def _expired(user: User, now: datetime) -> bool:
     return expires_at < now
 
 
-def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | None:
-    """Bind a chat to the account that owns the code carried by `/start`.
-
-    Returns None when the update is not a `/start` we should answer at all.
-    """
-    message = update.get("message") or {}
-    chat = message.get("chat") or {}
-    chat_id = chat.get("id")
-    if not isinstance(chat_id, int):
-        return None
-
-    sender = message.get("from") or {}
-    # Telegram tells us the client's language on every update, so even the replies sent before any
-    # binding exists can be localised.
-    language = resolve_language(sender.get("language_code"))
-
-    code = parse_start_command(message.get("text"))
-    if code is None:
-        return LinkOutcome(
-            chat_id=chat_id,
-            linked=False,
-            reply=t(language, "start_without_code"),
-        )
-
+def redeem_code(
+    db: Session,
+    *,
+    code: str,
+    chat_id: int,
+    telegram_username: str | None,
+    language: str,
+) -> tuple[LinkResult, User | None]:
+    """Bind a chat to the account that owns `code`."""
     user = db.query(User).filter(User.telegram_link_code == code).one_or_none()
     now = _now()
     if user is None or _expired(user, now):
-        return LinkOutcome(
-            chat_id=chat_id,
-            linked=False,
-            reply=t(language, "link_unknown"),
-        )
+        return LinkResult.UNKNOWN_OR_EXPIRED, None
 
     taken_by = (
         db.query(User).filter(User.telegram_chat_id == chat_id, User.id != user.id).one_or_none()
     )
     if taken_by is not None:
-        return LinkOutcome(
-            chat_id=chat_id,
-            linked=False,
-            reply=t(language, "link_taken"),
-        )
+        return LinkResult.CHAT_TAKEN, None
 
-    telegram_username = sender.get("username")
     user.telegram_chat_id = chat_id
     user.telegram_username = telegram_username
-    # Stored so reminders sent days later speak the same language as this reply.
+    # Stored so reminders sent days later speak the same language as the confirmation.
     user.telegram_language = language
     user.telegram_linked_at = now
     user.telegram_link_code = None
@@ -133,10 +98,4 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
     # never come; unlink() mirrors this by turning them back off.
     user.notifications_enabled = True
     db.commit()
-
-    return LinkOutcome(
-        chat_id=chat_id,
-        linked=True,
-        reply=t(language, "linked", username=user.username),
-        username=telegram_username,
-    )
+    return LinkResult.LINKED, user

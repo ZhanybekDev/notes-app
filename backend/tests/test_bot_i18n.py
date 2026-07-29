@@ -1,10 +1,11 @@
 import pytest
 
 from app import reminders
+from app.bot_commands import handle_update
 from app.bot_i18n import DEFAULT, MESSAGES, SUPPORTED, resolve_language, t
 from app.models import Note
-from app.telegram_link import handle_start_command, issue_link_code
-from tests.test_telegram_link import make_user, start_update
+from app.telegram_link import issue_link_code
+from tests.test_bot_commands import make_user, message
 
 
 def test_every_language_carries_the_same_keys():
@@ -49,9 +50,9 @@ def test_unknown_language_falls_back_rather_than_raising():
 
 class TestLinkRepliesFollowTheClient:
     def _reply(self, db, language_code, code="nope"):
-        update = start_update(code)
+        update = message(f"/start {code}")
         update["message"]["from"]["language_code"] = language_code
-        return handle_start_command(db, update).reply
+        return handle_update(db, update).text
 
     def test_russian_client_gets_russian(self, db_session):
         assert "устарела" in self._reply(db_session, "ru-RU")
@@ -60,20 +61,20 @@ class TestLinkRepliesFollowTheClient:
         assert "expired" in self._reply(db_session, "en")
 
     def test_missing_language_code_falls_back_to_english(self, db_session):
-        update = start_update("nope")
+        update = message("/start nope")
         update["message"]["from"].pop("language_code", None)
 
-        assert "expired" in handle_start_command(db_session, update).reply
+        assert "expired" in handle_update(db_session, update).text
 
     def test_confirmation_is_localised_and_the_language_is_remembered(self, db_session):
         user = make_user(db_session)
         code, _ = issue_link_code(db_session, user)
-        update = start_update(code)
+        update = message(f"/start {code}")
         update["message"]["from"]["language_code"] = "ru"
 
-        outcome = handle_start_command(db_session, update)
+        outcome = handle_update(db_session, update)
 
-        assert "Готово" in outcome.reply
+        assert "Готово" in outcome.text
         db_session.refresh(user)
         assert user.telegram_language == "ru"
 
@@ -82,9 +83,9 @@ class TestLinkRepliesFollowTheClient:
 
         user = make_user(db_session)
         code, _ = issue_link_code(db_session, user)
-        update = start_update(code)
+        update = message(f"/start {code}")
         update["message"]["from"]["language_code"] = "ru"
-        handle_start_command(db_session, update)
+        handle_update(db_session, update)
 
         unlink(db_session, user)
 

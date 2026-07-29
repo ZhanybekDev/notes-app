@@ -19,7 +19,8 @@ from types import FrameType
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import reminders, telegram_link
+from app import bot_commands, reminders
+from app.bot_i18n import SUPPORTED, t
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Note, Reminder, User
@@ -109,7 +110,7 @@ def process_updates(client: TelegramClient, offset: int | None) -> int | None:
 
         db = SessionLocal()
         try:
-            outcome = telegram_link.handle_start_command(db, update)
+            outcome = bot_commands.handle_update(db, update)
         except SQLAlchemyError:
             db.rollback()
             attempts = _update_failures.get(update_id, 0) + 1
@@ -141,29 +142,44 @@ def process_updates(client: TelegramClient, offset: int | None) -> int | None:
         if outcome is None:
             continue
         _reply(client, outcome)
-        if outcome.linked:
-            logger.info("linked chat %s", outcome.chat_id)
     return next_offset
 
 
-def _reply(client: TelegramClient, outcome: telegram_link.LinkOutcome) -> None:
+def _reply(client: TelegramClient, reply: bot_commands.BotReply) -> None:
     """Answer the user, retrying once past a rate limit.
 
-    Worth the retry: the binding is already committed, so without a reply the user is linked and
-    has no way to know it.
+    Worth the retry: a binding is already committed by the time this runs, so without a reply the
+    user is linked and has no way to know it.
     """
     try:
-        client.send_message(outcome.chat_id, outcome.reply)
+        client.send_message(reply.chat_id, reply.text)
         return
     except TelegramRetryAfter as exc:
         time.sleep(exc.seconds)
     except TelegramError:
-        logger.exception("failed to reply to chat %s", outcome.chat_id)
+        logger.exception("failed to reply to chat %s", reply.chat_id)
         return
     try:
-        client.send_message(outcome.chat_id, outcome.reply)
+        client.send_message(reply.chat_id, reply.text)
     except TelegramError:
-        logger.warning("could not confirm the link to chat %s", outcome.chat_id)
+        logger.warning("could not answer chat %s", reply.chat_id)
+
+
+def register_commands(client: TelegramClient) -> None:
+    """Publish the command menu, once per language.
+
+    Advisory: a bot that cannot advertise its menu still answers when asked, so a failure here is
+    logged and the loop starts anyway.
+    """
+    for language in SUPPORTED:
+        commands = [
+            {"command": name, "description": t(language, key)}
+            for name, key in bot_commands.COMMANDS
+        ]
+        try:
+            client.set_my_commands(commands, language_code=language)
+        except TelegramError:
+            logger.warning("could not publish the %s command menu", language)
 
 
 def tick(client: TelegramClient, now: datetime) -> int:
@@ -242,6 +258,7 @@ def run() -> None:
 
     wait_for_schema()
     client = build_client()
+    register_commands(client)
     logger.info("worker started, polling as @%s", settings.telegram_bot_username)
 
     offset: int | None = None

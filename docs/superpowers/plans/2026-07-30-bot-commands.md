@@ -43,6 +43,8 @@ itself, and Russian needs them in the genitive — twenty-four catalogue entries
 # backend/tests/test_bot_commands.py
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app import bot_commands
 from app.models import User
 from app.telegram_link import issue_link_code
@@ -96,6 +98,24 @@ class TestRouting:
         reply = bot_commands.handle_update(db_session, message("/help@notes_bot"))
 
         assert "/today" in reply.text
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("/start abc", ("start", "abc")),
+        ("  /start   abc  ", ("start", "abc")),
+        ("/start@my_bot abc", ("start", "abc")),
+        ("/START", ("start", None)),
+        ("/start", ("start", None)),
+        ("/start   ", ("start", None)),
+        ("hello", (None, None)),
+        ("", (None, None)),
+    ],
+)
+def test_parse(text, expected):
+    # Ported from the parse_start_command test that goes away with it, generalised to any command.
+    assert bot_commands._parse(text) == expected
 
 
 class TestStart:
@@ -232,9 +252,15 @@ def user_for_chat(db: Session, chat_id: int) -> User | None:
     return db.query(User).filter(User.telegram_chat_id == chat_id).one_or_none()
 ```
 
-Add `from enum import Enum` to the imports. Both `dataclass` and `Any` become unused once
-`LinkOutcome` and `handle_start_command` are gone — remove them, or ruff will. Keep `issue_link_code`, `unlink`, `parse_start_command`,
-`_now` and `_expired` as they are.
+Add `from enum import Enum` to the imports and remove three that lose their last consumer with
+`LinkOutcome` and `handle_start_command`: `dataclass`, `Any`, and the whole
+`from .bot_i18n import resolve_language, t` line — the module no longer produces prose, which is
+the point of the split. Ruff's F401 fails the build otherwise.
+
+Delete `parse_start_command` as well. Its only production consumer is `handle_start_command`, which
+is going away, and `bot_commands._parse` does the same job in a more general shape. Leaving it
+would put two parsers in the codebase, one of them unreachable — an odd result for a change whose
+stated purpose is a clean split. Keep `issue_link_code`, `unlink`, `_now` and `_expired`.
 
 - [ ] **Step 5: Write `bot_commands`**
 
@@ -381,10 +407,10 @@ The `if outcome.linked: logger.info(...)` line goes away — `bot_commands` logs
 
 - [ ] **Step 7: Move the old link tests to the new seam**
 
-In `backend/tests/test_telegram_link.py`, delete every test that exercised `handle_start_command`
-and the `start_update` helper, keeping `test_issue_link_code_replaces_previous`,
-`test_unlink_clears_binding_and_disables_notifications` and the `parse_start_command` parametrised
-test. Rewrite the two survivors that used `handle_start_command` to drive `redeem_code` directly:
+In `backend/tests/test_telegram_link.py`, delete every test that exercised `handle_start_command`,
+the `start_update` helper, and the `parse_start_command` parametrised test — the function it
+covers is gone. Keep `test_issue_link_code_replaces_previous` and
+`test_unlink_clears_binding_and_disables_notifications`, rewritten to drive `redeem_code` directly:
 
 ```python
 def test_issue_link_code_replaces_previous(db_session):
@@ -424,7 +450,12 @@ drop the `from tests.test_telegram_link import make_user, start_update` import i
 copies of those two helpers, and change every `handle_start_command(db, update)` call to
 `handle_update(db, update)` and every `.reply` to `.text`.
 
-In `backend/tests/test_worker_polling.py`, change all four `monkeypatch.setattr(worker.telegram_link, "handle_start_command", ...)` calls to `monkeypatch.setattr(worker.bot_commands, "handle_update", ...)`, and change the `real = worker.telegram_link.handle_start_command` line to `real = worker.bot_commands.handle_update`.
+In `backend/tests/test_worker_polling.py` there are six references, not four:
+`monkeypatch.setattr(worker.telegram_link, "handle_start_command", ...)` on lines 76, 96, 169 and
+193, and `real = worker.telegram_link.handle_start_command` on lines 88 and 185. Change every one
+of the first kind to `monkeypatch.setattr(worker.bot_commands, "handle_update", ...)` and **both**
+of the second to `real = worker.bot_commands.handle_update`. Missing either `real =` leaves a
+reference to a function that no longer exists.
 
 - [ ] **Step 8: Run the whole suite**
 
@@ -706,7 +737,10 @@ def handle_update(
     now = now or datetime.now(UTC)
 ```
 
-and, in place of the closing `return BotReply(chat_id, _help(language))`:
+and then replace **everything from `if command == "start":` to the end of the function** — not
+just the closing `return`. Replacing only the last line leaves the original `/start` branch sitting
+above the new one: harmless at runtime, since the first match wins, but it is duplicated code that
+no linter will catch and every reviewer will.
 
 ```python
     if command == "start":
@@ -768,7 +802,8 @@ busy week cannot push a message past what Telegram accepts."
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `backend/tests/test_bot_commands.py`, extending its `datetime` import with `time`:
+Extend the file's top imports to `from datetime import UTC, date, datetime, time, timedelta`, then
+append:
 
 ```python
 class TestStatusAndSwitch:
@@ -828,10 +863,10 @@ class TestStatusAndSwitch:
 
 And, in `backend/tests/test_worker_tick.py`, append a test proving the switch reaches delivery:
 
+Extend that file's top import to `from app import bot_commands, reminders`, then:
+
 ```python
 def test_pause_from_the_bot_stops_delivery(wired):
-    from app import bot_commands
-
     note = seed(wired)
     user = wired.get(User, note.user_id)  # seed already binds this user to chat 100
     bot_commands.handle_update(
@@ -1064,15 +1099,47 @@ Call it in `run()` directly after `client = build_client()` and before the "work
 Run: `docker compose exec -T backend ruff format . && docker compose exec -T backend ruff check . && make lint && make test`
 Expected: PASS everywhere
 
-- [ ] **Step 6: Verify openapi did not move**
+- [ ] **Step 6: Bring the architecture doc back in line**
+
+`docs/architecture.md` enumerates the backend packages and will be wrong the moment `bot_commands`
+exists. Under the backend packages list, add:
+
+```markdown
+- **`app/bot_commands.py`** — the single entry point for an incoming update: parses the command,
+  routes it and renders the reply. Everything the bot says lives here, so there is one place to
+  look for what a user will read.
+```
+
+and change the `app/telegram_link.py` bullet to end with "Returns a `LinkResult`; the wording that
+reaches the user belongs to `bot_commands`." In the backend layout tree, add
+`│   ├── bot_commands.py  command routing and replies` next to `bot_i18n.py`.
+
+Also add a short paragraph to `README.md`, at the end of the Telegram reminders section, so a
+reader learns the bot answers rather than only speaks:
+
+```markdown
+The bot also answers. Press the menu button next to the message box for `/today`, `/upcoming`,
+`/status`, and `/pause` and `/resume` to silence reminders without disconnecting.
+```
+
+Add the six commands to the Cross-cutting concerns section of `docs/architecture.md`, after the
+i18n bullet:
+
+```markdown
+- **Bot commands** — `/today`, `/upcoming`, `/status`, `/pause`, `/resume`, `/help`, published with
+  `setMyCommands` per language. Everything but `/start` and `/help` needs a linked chat; an
+  unlinked one is invited to link rather than told anything about an account.
+```
+
+- [ ] **Step 7: Verify openapi did not move**
 
 Run: `git status --short backend/openapi.json`
 Expected: no output — none of this is HTTP.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add backend/app/telegram.py backend/scripts/worker.py backend/tests/test_telegram_client.py backend/tests/test_worker_polling.py
+git add backend/app/telegram.py backend/scripts/worker.py backend/tests/test_telegram_client.py backend/tests/test_worker_polling.py docs/architecture.md README.md
 git commit -m "feat: publish the command menu in both languages
 
 setMyCommands takes a language_code, so the menu button shows Russian
