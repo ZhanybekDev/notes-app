@@ -3,6 +3,13 @@ import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import MarkdownToolbar from './MarkdownToolbar.jsx';
 import { useLang } from '../i18n.jsx';
+import {
+  REMINDER_OFF,
+  REMINDER_PASSED,
+  REMINDER_SCHEDULED,
+  formatNoteDate,
+  reminderStatus,
+} from '../reminderStatus.js';
 
 function emptyNote() {
   return { title: '', content: '', tags: [], note_date: null, pinned_at: null, archived_at: null };
@@ -12,7 +19,7 @@ const NoteEditor = forwardRef(function NoteEditor(
   { note, onSave, onCancel, onDelete, onPin, onArchive, reminderPrefs, reminderPrefsFailed },
   ref,
 ) {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const [draft, setDraft] = useState(emptyNote());
   const [tagsInput, setTagsInput] = useState('');
   const formRef = useRef(null);
@@ -50,15 +57,22 @@ const NoteEditor = forwardRef(function NoteEditor(
   let reminderHint = null;
   if (reminderPrefsFailed) {
     reminderHint = t('editor.reminderUnknown');
-  } else if (reminderPrefs) {
-    reminderHint =
-      reminderPrefs.notifications_enabled && reminderPrefs.telegram_linked ? (
-        t('editor.reminderAt', { time: reminderPrefs.reminder_time.slice(0, 5) })
-      ) : (
+  } else {
+    const status = reminderStatus(draft.note_date, reminderPrefs);
+    if (status?.kind === REMINDER_SCHEDULED) {
+      reminderHint = t('editor.reminderScheduled', {
+        date: formatNoteDate(status.date, lang),
+        time: status.time,
+      });
+    } else if (status?.kind === REMINDER_PASSED) {
+      reminderHint = t('editor.reminderPassed');
+    } else if (status?.kind === REMINDER_OFF) {
+      reminderHint = (
         <>
           {t('editor.reminderOff')} <Link to="/settings">{t('editor.reminderSettingsLink')}</Link>
         </>
       );
+    }
   }
 
   const isPersisted = Boolean(note);
