@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +24,9 @@ BACKFILL_WINDOW = timedelta(hours=24)
 MATERIALIZE_HORIZON = timedelta(hours=48)
 MAX_ATTEMPTS = 5
 EXCERPT_LIMIT = 300
+# Reconciliation passes run every 30s; bound them so a growing outbox cannot turn each pass into a
+# full-table scan. Whatever a pass does not reach is picked up by the next one.
+RECONCILE_LIMIT = 500
 
 logger = logging.getLogger(__name__)
 
@@ -68,30 +71,40 @@ def materialize_due(db: Session, now: datetime) -> int:
 
     Reviving matters because a cancelled row keeps occupying `(note_id, note_date)`: without it,
     moving a note's date away and back would mean the reminder never fires again.
+
+    Existing rows are fetched in one query and everything is committed once. Committing per note
+    would expire every loaded object (`expire_on_commit` is on by default), so each following
+    iteration would re-`SELECT` its note and user — measured at 79 queries for 20 notes.
     """
-    created = 0
-    for note, user in _eligible_notes(db, now):
+    candidates = _eligible_notes(db, now)
+    if not candidates:
+        return 0
+
+    existing = {
+        (row.note_id, row.note_date): row
+        for row in db.query(Reminder)
+        .filter(Reminder.note_id.in_([note.id for note, _ in candidates]))
+        .all()
+    }
+
+    changed = 0
+    for note, user in candidates:
         try:
             scheduled_for = compute_scheduled_for(note.note_date, user.timezone, user.reminder_time)
-        except Exception:
+        except (ZoneInfoNotFoundError, ValueError):
             logger.exception("cannot schedule note %s for user %s", note.id, user.id)
             continue
         if not _in_range(scheduled_for, now):
             continue
 
-        existing = (
-            db.query(Reminder)
-            .filter(Reminder.note_id == note.id, Reminder.note_date == note.note_date)
-            .one_or_none()
-        )
-        if existing is not None:
-            if existing.status == Reminder.STATUS_CANCELLED:
-                existing.status = Reminder.STATUS_PENDING
-                existing.scheduled_for = scheduled_for
-                existing.attempts = 0
-                existing.last_error = None
-                db.commit()
-                created += 1
+        row = existing.get((note.id, note.note_date))
+        if row is not None:
+            if row.status == Reminder.STATUS_CANCELLED:
+                row.status = Reminder.STATUS_PENDING
+                row.scheduled_for = scheduled_for
+                row.attempts = 0
+                row.last_error = None
+                changed += 1
             continue
 
         db.add(
@@ -103,13 +116,19 @@ def materialize_due(db: Session, now: datetime) -> int:
                 status=Reminder.STATUS_PENDING,
             )
         )
-        try:
-            db.commit()
-            created += 1
-        except IntegrityError:
-            # Safety net for a concurrent producer; the unique constraint is authoritative.
-            db.rollback()
-    return created
+        changed += 1
+
+    if not changed:
+        return 0
+    try:
+        db.commit()
+    except IntegrityError:
+        # Safety net for a concurrent producer — normally only a manual tick() alongside the
+        # service. The unique constraint is authoritative; the next pass picks the work up.
+        db.rollback()
+        logger.warning("materialisation lost a race, retrying next pass")
+        return 0
+    return changed
 
 
 def resync_pending(db: Session, now: datetime) -> int:
@@ -118,7 +137,12 @@ def resync_pending(db: Session, now: datetime) -> int:
     rows = (
         db.query(Reminder, User)
         .join(User, Reminder.user_id == User.id)
-        .filter(Reminder.status == Reminder.STATUS_PENDING)
+        .filter(
+            Reminder.status == Reminder.STATUS_PENDING,
+            Reminder.scheduled_for <= now + MATERIALIZE_HORIZON,
+        )
+        .order_by(Reminder.scheduled_for)
+        .limit(RECONCILE_LIMIT)
         .all()
     )
     for reminder, user in rows:
@@ -126,7 +150,7 @@ def resync_pending(db: Session, now: datetime) -> int:
             scheduled_for = compute_scheduled_for(
                 reminder.note_date, user.timezone, user.reminder_time
             )
-        except Exception:
+        except (ZoneInfoNotFoundError, ValueError):
             logger.exception("cannot reschedule reminder %s", reminder.id)
             continue
         if _as_utc(reminder.scheduled_for) != scheduled_for:
@@ -161,7 +185,14 @@ def cancel_stale(db: Session, now: datetime) -> int:
         db.query(Reminder, Note, User)
         .join(Note, Reminder.note_id == Note.id)
         .join(User, Reminder.user_id == User.id)
-        .filter(Reminder.status == Reminder.STATUS_PENDING)
+        .filter(
+            Reminder.status == Reminder.STATUS_PENDING,
+            # Rows further out than the horizon cannot be due yet; overdue ones stay in scope
+            # precisely because they are the ones that need cancelling.
+            Reminder.scheduled_for <= now + MATERIALIZE_HORIZON,
+        )
+        .order_by(Reminder.scheduled_for)
+        .limit(RECONCILE_LIMIT)
         .all()
     )
     for reminder, note, user in rows:

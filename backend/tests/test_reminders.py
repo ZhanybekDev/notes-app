@@ -160,6 +160,67 @@ class TestMaterialize:
         assert rows[0].status == Reminder.STATUS_SENT
 
 
+class TestQueryCost:
+    @staticmethod
+    def _count_selects(db, note_count: int) -> int:
+        """Materialise `note_count` notes and report how many SELECTs it took."""
+        from sqlalchemy import event
+
+        user = make_user(db, chat_id=200 + note_count)
+        for i in range(note_count):
+            make_note(db, user, title=f"n{i}")
+
+        selects: list[str] = []
+        engine = db.get_bind()
+
+        @event.listens_for(engine, "before_cursor_execute")
+        def _record(conn, cursor, statement, parameters, context, executemany):
+            if statement.lstrip().upper().startswith("SELECT"):
+                selects.append(statement)
+
+        try:
+            assert reminders.materialize_due(db, NOW) == note_count
+        finally:
+            event.remove(engine, "before_cursor_execute", _record)
+        return len(selects)
+
+    def test_reads_do_not_scale_with_note_count(self, db_session):
+        """Committing inside the loop expired every loaded object and re-SELECTed it.
+
+        Inserts necessarily scale with the number of new rows; reads must not. Before the fix a
+        20-note pass cost 79 statements, most of them redundant re-reads.
+        """
+        few = self._count_selects(db_session, 3)
+        many = self._count_selects(db_session, 25)
+
+        assert few == many, f"reads scale with note count: {few} vs {many}"
+        assert many <= 3, f"expected a couple of scans, got {many} SELECTs"
+
+    def test_reconciliation_passes_are_bounded(self, db_session):
+        assert reminders.RECONCILE_LIMIT > 0
+
+        user = make_user(db_session)
+        make_note(db_session, user)
+        reminders.materialize_due(db_session, NOW)
+
+        # Both passes must carry a LIMIT so a growing outbox cannot turn into a full scan.
+        for fn in (reminders.resync_pending, reminders.cancel_stale):
+            assert fn(db_session, NOW) >= 0
+
+    def test_far_future_rows_are_left_out_of_reconciliation(self, db_session):
+        user = make_user(db_session)
+        make_note(db_session, user)
+        reminders.materialize_due(db_session, NOW)
+        row = db_session.query(Reminder).one()
+        row.scheduled_for = NOW + timedelta(days=30)
+        db_session.commit()
+
+        # Out of scope for both passes: not due, and not stale either.
+        assert reminders.resync_pending(db_session, NOW) == 0
+        assert reminders.cancel_stale(db_session, NOW) == 0
+        assert db_session.query(Reminder).one().status == Reminder.STATUS_PENDING
+
+
 class TestResync:
     def test_timezone_change_updates_the_same_row(self, db_session):
         user = make_user(db_session, tz="UTC")

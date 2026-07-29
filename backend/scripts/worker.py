@@ -62,12 +62,16 @@ def wait_for_schema() -> None:
 
     The backend service owns `alembic upgrade head`, so on a fresh volume this process starts
     against a database that has no tables yet. Retrying beats crash-looping.
+
+    Probes `reminders` — the table created by the newest migration — rather than `users`, which
+    exists from 0001 onwards. Probing an early table would let this return while the tables the
+    worker actually needs are still missing, which is precisely the case it exists to cover.
     """
     delay = SCHEMA_WAIT_SECONDS
     while not _shutdown:
         db = SessionLocal()
         try:
-            db.execute(text("SELECT 1 FROM users LIMIT 1"))
+            db.execute(text("SELECT 1 FROM reminders LIMIT 1"))
             return
         except SQLAlchemyError:
             logger.info("schema not ready, retrying in %ss", delay)
@@ -88,18 +92,24 @@ def process_updates(client: TelegramClient, offset: int | None) -> int | None:
     next_offset = offset
     for update in updates:
         update_id = update.get("update_id")
-        if isinstance(update_id, int):
-            next_offset = update_id + 1
 
         db = SessionLocal()
         try:
             outcome = telegram_link.handle_start_command(db, update)
         except SQLAlchemyError:
             db.rollback()
-            logger.exception("failed to handle update %s", update_id)
-            continue
+            # Stop without confirming this update or the rest of the batch. Advancing the offset
+            # here would tell Telegram we handled it, and a transient database blip would cost the
+            # user their /start with no way to notice — the same silent loss the startup flush
+            # avoids.
+            logger.exception("failed to handle update %s, leaving it unconfirmed", update_id)
+            return next_offset
         finally:
             db.close()
+
+        # Only now is the update genuinely handled.
+        if isinstance(update_id, int):
+            next_offset = update_id + 1
 
         if outcome is None:
             continue
