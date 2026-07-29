@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { clearToken } from '../auth.js';
 import { useLang } from '../i18n.jsx';
+import { useTelegramLink } from '../hooks/useTelegramLink.js';
+
+const SAVED_NOTICE_MS = 2500;
 
 function listTimeZones(current) {
   const supported =
@@ -17,7 +20,6 @@ export default function Settings() {
   const [prefs, setPrefs] = useState(null);
   const [prefsError, setPrefsError] = useState(null);
   const [prefsSaved, setPrefsSaved] = useState(false);
-  const [linkNotice, setLinkNotice] = useState(false);
   const [timeDraft, setTimeDraft] = useState('');
 
   const timeZones = useMemo(() => listTimeZones(prefs?.timezone ?? 'UTC'), [prefs?.timezone]);
@@ -54,22 +56,28 @@ export default function Settings() {
     }
   };
 
-  const connectTelegram = async () => {
-    setPrefsError(null);
-    setLinkNotice(false);
-    try {
-      const { deep_link_url: url } = await api.linkTelegram();
-      window.open(url, '_blank', 'noopener');
-      setLinkNotice(true);
-    } catch (err) {
-      setPrefsError(err.message);
-    }
-  };
+  const {
+    status: linkStatus,
+    error: linkError,
+    connect: connectTelegram,
+    recheck: recheckTelegram,
+  } = useTelegramLink({
+    onLinked: (next) => {
+      setPrefs(next);
+      setTimeDraft(next.reminder_time.slice(0, 5));
+    },
+  });
+
+  // The confirmation used to sit there for the rest of the session.
+  useEffect(() => {
+    if (!prefsSaved) return undefined;
+    const id = setTimeout(() => setPrefsSaved(false), SAVED_NOTICE_MS);
+    return () => clearTimeout(id);
+  }, [prefsSaved]);
 
   const disconnectTelegram = async () => {
     if (!window.confirm(t('settings.confirmDisconnect'))) return;
     setPrefsError(null);
-    setLinkNotice(false);
     try {
       await api.unlinkTelegram();
       const next = await api.getSettings();
@@ -190,27 +198,50 @@ export default function Settings() {
                 </>
               ) : (
                 <>
+                  {/* The waiting message lives in the notice below, next to the expiry — saying
+                      it here as well put the same sentence on screen twice. */}
                   <span className="settings-hint">{t('settings.telegramNotConnected')}</span>
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={connectTelegram}
-                    disabled={!prefs.bot_configured}
+                    onClick={() => {
+                      setPrefsError(null);
+                      connectTelegram();
+                    }}
+                    disabled={
+                      !prefs.bot_configured ||
+                      linkStatus === 'requesting' ||
+                      linkStatus === 'waiting'
+                    }
                     title={t('tips.connectTelegram')}
                   >
                     {t('settings.connectTelegram')}
                   </button>
+                  {(linkStatus === 'timeout' || linkStatus === 'error') && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={recheckTelegram}
+                      title={t('tips.linkRecheck')}
+                    >
+                      {t('settings.linkRecheck')}
+                    </button>
+                  )}
                 </>
               )}
             </div>
           </div>
         )}
 
-        {linkNotice && (
-          <div className="success">
-            {t('settings.linkOpened')} {t('settings.linkExpires')}
+        {linkStatus === 'waiting' && (
+          <div className="notice-waiting">
+            {t('settings.linkWaiting')} {t('settings.linkExpires')}
           </div>
         )}
+        {linkStatus === 'timeout' && (
+          <div className="notice-warning">{t('settings.linkTimedOut')}</div>
+        )}
+        {linkError && <div className="error">{linkError}</div>}
         {prefsSaved && <div className="success">{t('settings.settingsSaved')}</div>}
         {prefsError && <div className="error">{prefsError}</div>}
       </section>

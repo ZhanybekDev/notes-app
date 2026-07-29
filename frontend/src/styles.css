@@ -1045,3 +1045,12 @@ kbd {
   main { padding: 1rem; }
   .theme-label, .lang-label { display: none; }
 }
+.notice-waiting {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-ring);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.88rem;
+  margin-top: 0.75rem;
+}

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -165,5 +165,67 @@ describe('Settings — Telegram reminders', () => {
     await user.click(await screen.findByRole('button', { name: 'Disconnect' }));
 
     expect(unlinkTelegram).not.toHaveBeenCalled();
+  });
+  it('waits for the binding and connects without a reload', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getSettings').mockResolvedValueOnce(UNLINKED).mockResolvedValue(LINKED);
+    vi.spyOn(api, 'linkTelegram').mockResolvedValue({
+      deep_link_url: 'https://t.me/test_bot?start=code123',
+      expires_at: '2026-07-30T12:00:00Z',
+    });
+    vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    renderSettings();
+    await user.click(await screen.findByRole('button', { name: 'Connect Telegram' }));
+
+    expect(await screen.findByText(/Waiting for confirmation/)).toBeInTheDocument();
+    // The first poll lands 2s in, past findByText's default one-second patience.
+    expect(
+      await screen.findByText('Connected as @alice_tg', {}, { timeout: 5000 })
+    ).toBeInTheDocument();
+  });
+
+  it('disables the connect button while waiting', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
+    vi.spyOn(api, 'linkTelegram').mockResolvedValue({
+      deep_link_url: 'https://t.me/test_bot?start=code123',
+      expires_at: '2026-07-30T12:00:00Z',
+    });
+    vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    renderSettings();
+    const connect = await screen.findByRole('button', { name: 'Connect Telegram' });
+    await user.click(connect);
+
+    await waitFor(() => expect(connect).toBeDisabled());
+  });
+
+  it('surfaces a failure to issue the link', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
+    vi.spyOn(api, 'linkTelegram').mockRejectedValue(new Error('bot is not configured'));
+
+    renderSettings();
+    await user.click(await screen.findByRole('button', { name: 'Connect Telegram' }));
+
+    expect(await screen.findByText('bot is not configured')).toBeInTheDocument();
+  });
+
+  it('clears the saved confirmation on its own', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
+    vi.spyOn(api, 'updateSettings').mockResolvedValue({
+      ...UNLINKED,
+      notifications_enabled: true,
+    });
+
+    renderSettings();
+    await user.click(await screen.findByRole('checkbox'));
+    const saved = await screen.findByText('Saved.');
+
+    // Real timers on purpose. Fake timers plus userEvent plus Testing Library's async wrapper is
+    // a known source of flakes, and 2.5s once is cheaper than a test that fails at random.
+    await waitForElementToBeRemoved(saved, { timeout: 4000 });
   });
 });
