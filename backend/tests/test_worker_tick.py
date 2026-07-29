@@ -53,6 +53,14 @@ def seed(db, *, enabled=True, chat_id=100, note_date=date(2026, 8, 1)) -> Note:
     return note
 
 
+def test_poll_backoff_grows_then_caps():
+    delays = [worker.poll_backoff(n) for n in range(1, 9)]
+
+    assert delays == [2, 4, 8, 16, 32, 60, 60, 60]
+    # A five-minute outage costs ~10 log lines instead of ~150.
+    assert sum(delays[:6]) >= 120
+
+
 def test_due_note_is_delivered(wired):
     seed(wired)
     client = FakeClient()

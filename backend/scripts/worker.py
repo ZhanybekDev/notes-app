@@ -36,6 +36,8 @@ IDLE_SLEEP_SECONDS = 60
 SCHEMA_WAIT_SECONDS = 2
 SCHEMA_WAIT_MAX_SECONDS = 30
 TICK_INTERVAL_SECONDS = 30
+POLL_BACKOFF_BASE_SECONDS = 2
+POLL_BACKOFF_MAX_SECONDS = 60
 
 logger = logging.getLogger("worker")
 
@@ -46,6 +48,13 @@ def _request_shutdown(signum: int, frame: FrameType | None) -> None:
     global _shutdown
     _shutdown = True
     logger.info("received signal %s, finishing current iteration", signum)
+
+
+def poll_backoff(consecutive_failures: int) -> int:
+    """Exponential backoff, capped, so a long outage stays quiet instead of flooding the log."""
+    return min(
+        POLL_BACKOFF_BASE_SECONDS * 2 ** (consecutive_failures - 1), POLL_BACKOFF_MAX_SECONDS
+    )
 
 
 def wait_for_schema() -> None:
@@ -166,18 +175,29 @@ def run() -> None:
 
     offset: int | None = None
     last_tick = 0.0
+    failures = 0
     while not _shutdown:
         try:
             offset = process_updates(client, offset)
+            failures = 0
         except TelegramRetryAfter as exc:
             logger.warning("rate limited, sleeping %ss", exc.seconds)
             time.sleep(exc.seconds)
         except TelegramNotConfigured:
             logger.error("bot token became invalid, stopping")
             return
-        except TelegramError:
-            logger.exception("polling failed, retrying")
-            time.sleep(SCHEMA_WAIT_SECONDS)
+        except TelegramError as exc:
+            # Network drops to api.telegram.org come in bursts lasting minutes. A flat 2s retry
+            # turns one outage into hundreds of tracebacks, which buries anything real.
+            failures += 1
+            delay = poll_backoff(failures)
+            if failures == 1:
+                logger.exception("polling failed, retrying in %ss", delay)
+            else:
+                logger.warning(
+                    "polling still failing (%s in a row): %s; retrying in %ss", failures, exc, delay
+                )
+            time.sleep(delay)
 
         # Long polling returns immediately when updates are waiting, so pace delivery on its own
         # clock instead of letting a chatty chat turn it into a busy loop.
