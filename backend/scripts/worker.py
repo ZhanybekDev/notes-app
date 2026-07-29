@@ -38,10 +38,16 @@ SCHEMA_WAIT_MAX_SECONDS = 30
 TICK_INTERVAL_SECONDS = 30
 POLL_BACKOFF_BASE_SECONDS = 2
 POLL_BACKOFF_MAX_SECONDS = 60
+MAX_UPDATE_ATTEMPTS = 5
+DELIVERY_BATCH_LIMIT = 50
 
 logger = logging.getLogger("worker")
 
 _shutdown = False
+# Consecutive failures per update, so one unprocessable update cannot wedge the queue forever.
+# Deliberately in-process and ephemeral: a restart resets the counters, which just means the
+# update gets its retries again — the durable state that matters lives in the outbox table.
+_update_failures: dict[object, int] = {}
 
 
 def _request_shutdown(signum: int, frame: FrameType | None) -> None:
@@ -98,6 +104,20 @@ def process_updates(client: TelegramClient, offset: int | None) -> int | None:
             outcome = telegram_link.handle_start_command(db, update)
         except SQLAlchemyError:
             db.rollback()
+            attempts = _update_failures.get(update_id, 0) + 1
+            _update_failures[update_id] = attempts
+            if attempts >= MAX_UPDATE_ATTEMPTS:
+                # Leaving it unconfirmed forever would wedge every later binding behind one
+                # unprocessable update. Give up loudly and move on.
+                logger.error(
+                    "update %s failed %s times, skipping it to unblock the queue",
+                    update_id,
+                    attempts,
+                )
+                del _update_failures[update_id]
+                if isinstance(update_id, int):
+                    next_offset = update_id + 1
+                continue
             # Stop without confirming this update or the rest of the batch. Advancing the offset
             # here would tell Telegram we handled it, and a transient database blip would cost the
             # user their /start with no way to notice — the same silent loss the startup flush
@@ -108,21 +128,36 @@ def process_updates(client: TelegramClient, offset: int | None) -> int | None:
             db.close()
 
         # Only now is the update genuinely handled.
+        _update_failures.pop(update_id, None)
         if isinstance(update_id, int):
             next_offset = update_id + 1
 
         if outcome is None:
             continue
-        chat_id = (update.get("message") or {}).get("chat", {}).get("id")
-        try:
-            client.send_message(chat_id, outcome.reply)
-        except TelegramRetryAfter as exc:
-            time.sleep(exc.seconds)
-        except TelegramError:
-            logger.exception("failed to reply to chat %s", chat_id)
+        _reply(client, outcome)
         if outcome.linked:
-            logger.info("linked chat %s", chat_id)
+            logger.info("linked chat %s", outcome.chat_id)
     return next_offset
+
+
+def _reply(client: TelegramClient, outcome: telegram_link.LinkOutcome) -> None:
+    """Answer the user, retrying once past a rate limit.
+
+    Worth the retry: the binding is already committed, so without a reply the user is linked and
+    has no way to know it.
+    """
+    try:
+        client.send_message(outcome.chat_id, outcome.reply)
+        return
+    except TelegramRetryAfter as exc:
+        time.sleep(exc.seconds)
+    except TelegramError:
+        logger.exception("failed to reply to chat %s", outcome.chat_id)
+        return
+    try:
+        client.send_message(outcome.chat_id, outcome.reply)
+    except TelegramError:
+        logger.warning("could not confirm the link to chat %s", outcome.chat_id)
 
 
 def tick(client: TelegramClient, now: datetime) -> int:
@@ -134,7 +169,12 @@ def tick(client: TelegramClient, now: datetime) -> int:
         reminders.resync_pending(db, now)
 
         sent = 0
-        for reminder in reminders.claim_batch(db, now):
+        attempted: set[int] = set()
+        while len(attempted) < DELIVERY_BATCH_LIMIT:
+            reminder = reminders.claim_next(db, now, attempted)
+            if reminder is None:
+                break
+            attempted.add(reminder.id)
             note = db.get(Note, reminder.note_id)
             user = db.get(User, reminder.user_id)
             # Re-check immediately before sending, not only in cancel_stale at the top of the

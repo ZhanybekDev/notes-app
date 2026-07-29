@@ -9,7 +9,7 @@ function emptyNote() {
 }
 
 const NoteEditor = forwardRef(function NoteEditor(
-  { note, onSave, onCancel, onDelete, onPin, onArchive, reminderPrefs },
+  { note, onSave, onCancel, onDelete, onPin, onArchive, reminderPrefs, reminderPrefsFailed },
   ref,
 ) {
   const { t } = useLang();
@@ -89,6 +89,11 @@ const NoteEditor = forwardRef(function NoteEditor(
             value={draft.note_date || ''}
             onChange={(e) => setDraft({ ...draft, note_date: e.target.value || null })}
           />
+          {draft.note_date && reminderPrefsFailed && (
+            <span className="reminder-hint reminder-hint-failed">
+              {t('editor.reminderUnknown')}
+            </span>
+          )}
           {draft.note_date && reminderPrefs && (
             <span className="reminder-hint">
               {reminderPrefs.notifications_enabled && reminderPrefs.telegram_linked ? (

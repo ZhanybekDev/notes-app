@@ -184,6 +184,23 @@ class TestQueryCost:
             event.remove(engine, "before_cursor_execute", _record)
         return len(selects)
 
+    def test_candidate_scan_is_capped(self, db_session, monkeypatch):
+        """The cap must apply to outstanding work, not to the whole date window.
+
+        Capping a plain date scan would starve the tail: already-materialised notes would fill
+        every pass and the rest would never be reached.
+        """
+        monkeypatch.setattr(reminders, "RECONCILE_LIMIT", 3)
+        user = make_user(db_session)
+        for i in range(7):
+            make_note(db_session, user, title=f"n{i}")
+
+        assert reminders.materialize_due(db_session, NOW) == 3
+        assert reminders.materialize_due(db_session, NOW) == 3
+        assert reminders.materialize_due(db_session, NOW) == 1
+        assert reminders.materialize_due(db_session, NOW) == 0
+        assert db_session.query(Reminder).count() == 7
+
     def test_reads_do_not_scale_with_note_count(self, db_session):
         """Committing inside the loop expired every loaded object and re-SELECTed it.
 
@@ -207,6 +224,21 @@ class TestQueryCost:
         for fn in (reminders.resync_pending, reminders.cancel_stale):
             assert fn(db_session, NOW) >= 0
 
+    def test_rows_pushed_past_the_horizon_by_a_timezone_change_stay_in_scope(self, db_session):
+        """A resync can move a row beyond the horizon; it must still be maintained afterwards."""
+        user = make_user(db_session)
+        make_note(db_session, user)
+        reminders.materialize_due(db_session, NOW)
+        row = db_session.query(Reminder).one()
+        row.scheduled_for = NOW + reminders.MATERIALIZE_HORIZON + timedelta(hours=6)
+        db_session.commit()
+
+        # Still reachable, so the schedule gets corrected instead of freezing.
+        assert reminders.resync_pending(db_session, NOW) == 1
+        assert reminders._as_utc(db_session.query(Reminder).one().scheduled_for) == datetime(
+            2026, 8, 1, 9, 0, tzinfo=UTC
+        )
+
     def test_far_future_rows_are_left_out_of_reconciliation(self, db_session):
         user = make_user(db_session)
         make_note(db_session, user)
@@ -215,7 +247,7 @@ class TestQueryCost:
         row.scheduled_for = NOW + timedelta(days=30)
         db_session.commit()
 
-        # Out of scope for both passes: not due, and not stale either.
+        # Beyond anything a timezone change could produce: out of scope for both passes.
         assert reminders.resync_pending(db_session, NOW) == 0
         assert reminders.cancel_stale(db_session, NOW) == 0
         assert db_session.query(Reminder).one().status == Reminder.STATUS_PENDING
@@ -317,14 +349,25 @@ class TestClaim:
         make_note(db_session, user)
         reminders.materialize_due(db_session, NOW)
 
-        assert reminders.claim_batch(db_session, NOW) == []
-        assert len(reminders.claim_batch(db_session, NOW.replace(hour=9))) == 1
+        assert reminders.claim_next(db_session, NOW, set()) is None
+        assert reminders.claim_next(db_session, NOW.replace(hour=9), set()) is not None
+
+    def test_excluded_rows_are_not_handed_out_again(self, db_session):
+        user = make_user(db_session)
+        make_note(db_session, user)
+        reminders.materialize_due(db_session, NOW)
+        due = NOW.replace(hour=9)
+
+        first = reminders.claim_next(db_session, due, set())
+        assert first is not None
+        assert reminders.claim_next(db_session, due, {first.id}) is None
 
     def test_statement_locks_rows_and_skips_locked_ones(self):
         # SQLite ignores row locking, so assert on the SQL the Postgres dialect will actually run.
         stmt = (
             reminders.select(Reminder)
             .where(Reminder.status == Reminder.STATUS_PENDING)
+            .limit(1)
             .with_for_update(skip_locked=True)
         )
         sql = str(stmt.compile(dialect=postgresql.dialect()))

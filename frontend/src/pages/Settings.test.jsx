@@ -57,6 +57,37 @@ describe('Settings — Telegram reminders', () => {
     expect(screen.getByDisplayValue('09:00')).toBeInTheDocument();
   });
 
+  it('sends one PATCH per time edit, on blur rather than per keystroke', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getSettings').mockResolvedValue(LINKED);
+    const update = vi
+      .spyOn(api, 'updateSettings')
+      .mockResolvedValue({ ...LINKED, reminder_time: '07:30:00' });
+
+    renderSettings();
+    const input = await screen.findByDisplayValue('09:00');
+    await user.clear(input);
+    await user.type(input, '07:30');
+    expect(update).not.toHaveBeenCalled();
+
+    await user.tab();
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({ reminder_time: '07:30' });
+  });
+
+  it('does not PATCH when the time is left unchanged', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getSettings').mockResolvedValue(LINKED);
+    const update = vi.spyOn(api, 'updateSettings').mockResolvedValue(LINKED);
+
+    renderSettings();
+    await user.click(await screen.findByDisplayValue('09:00'));
+    await user.tab();
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('persists the notifications toggle', async () => {
     const user = userEvent.setup();
     vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);

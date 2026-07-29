@@ -1,3 +1,10 @@
+# Shared by the two services that import app.config: Settings requires JWT_SECRET and its default
+# database_url points at localhost, which is wrong inside a container. Anchored so the dev secret
+# lives in exactly one place.
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/notes
+  JWT_SECRET: dev-secret-change-me-please-32bytes
+
 services:
   db:
     image: postgres:16-alpine
@@ -21,8 +28,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/notes
-      JWT_SECRET: dev-secret-change-me-please-32bytes
+      <<: *app-env
       CORS_ORIGINS: http://localhost:5173
     ports:
       - "8000:8000"
@@ -39,9 +45,7 @@ services:
     # TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME are intentionally absent here: pydantic-settings
     # already reads backend/.env (mounted at /app/.env). Declaring them as ${VAR:-} would
     # interpolate to "" and silently override the file.
-    environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/notes
-      JWT_SECRET: dev-secret-change-me-please-32bytes
+    environment: *app-env
     volumes:
       - ./backend:/app
     command: python -m scripts.worker

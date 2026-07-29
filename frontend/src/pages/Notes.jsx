@@ -23,6 +23,7 @@ export default function Notes({ registerAction }) {
   const [error, setError] = useState(null);
   // Fetched here rather than in NoteEditor: components stay presentational, pages fetch.
   const [reminderPrefs, setReminderPrefs] = useState(null);
+  const [reminderPrefsFailed, setReminderPrefsFailed] = useState(false);
 
   const searchRef = useRef(null);
   const editorRef = useRef(null);
@@ -59,8 +60,10 @@ export default function Notes({ registerAction }) {
       .then((prefs) => {
         if (!cancelled) setReminderPrefs(prefs);
       })
-      .catch((err) => {
-        if (!cancelled) setError(err.message);
+      .catch(() => {
+        // Reported next to the date field rather than as a page-level error: the reminder hint
+        // is secondary, and failing it should not read as "the notes list is broken".
+        if (!cancelled) setReminderPrefsFailed(true);
       });
     return () => {
       cancelled = true;
@@ -247,6 +250,7 @@ export default function Notes({ registerAction }) {
             onPin={onPin}
             onArchive={onArchive}
             reminderPrefs={reminderPrefs}
+            reminderPrefsFailed={reminderPrefsFailed}
           />
         ) : (
           <div className="empty-state">

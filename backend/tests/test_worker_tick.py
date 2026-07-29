@@ -162,15 +162,16 @@ def test_date_cleared_between_reconcile_and_send_is_not_delivered(wired, monkeyp
     """The API can edit a note mid-pass; a message cannot be taken back once sent."""
     note = seed(wired)
     client = FakeClient()
-    original_claim = reminders.claim_batch
+    original_claim = reminders.claim_next
 
-    def claim_then_clear_the_date(db, now, limit=50):
-        claimed = original_claim(db, now, limit)
-        note.note_date = None
-        db.commit()
+    def claim_then_clear_the_date(db, now, exclude):
+        claimed = original_claim(db, now, exclude)
+        if claimed is not None:
+            note.note_date = None
+            db.commit()
         return claimed
 
-    monkeypatch.setattr(reminders, "claim_batch", claim_then_clear_the_date)
+    monkeypatch.setattr(reminders, "claim_next", claim_then_clear_the_date)
 
     assert worker.tick(client, DUE) == 0
     assert client.sent == []
@@ -180,15 +181,16 @@ def test_date_cleared_between_reconcile_and_send_is_not_delivered(wired, monkeyp
 def test_notifications_disabled_between_reconcile_and_send_is_not_delivered(wired, monkeypatch):
     note = seed(wired)
     client = FakeClient()
-    original_claim = reminders.claim_batch
+    original_claim = reminders.claim_next
 
-    def claim_then_disable(db, now, limit=50):
-        claimed = original_claim(db, now, limit)
-        db.get(User, note.user_id).notifications_enabled = False
-        db.commit()
+    def claim_then_disable(db, now, exclude):
+        claimed = original_claim(db, now, exclude)
+        if claimed is not None:
+            db.get(User, note.user_id).notifications_enabled = False
+            db.commit()
         return claimed
 
-    monkeypatch.setattr(reminders, "claim_batch", claim_then_disable)
+    monkeypatch.setattr(reminders, "claim_next", claim_then_disable)
 
     assert worker.tick(client, DUE) == 0
     assert client.sent == []

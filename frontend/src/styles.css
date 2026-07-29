@@ -974,6 +974,7 @@ kbd {
   color: var(--text-subtle);
 }
 .reminder-hint a { color: var(--accent); }
+.reminder-hint-failed { color: var(--warning-fg); }
 .notifications-grid {
   display: flex;
   flex-direction: column;

@@ -21,8 +21,13 @@ _LINK_CODE_BYTES = 32
 
 @dataclass(frozen=True)
 class LinkOutcome:
-    """What the worker should reply with, and whether anything was persisted."""
+    """What the worker should reply with, and whether anything was persisted.
 
+    Carries `chat_id` so the caller does not re-parse the update: doing it twice invited the two
+    extractions to drift, and the worker's copy was the unguarded one.
+    """
+
+    chat_id: int
     linked: bool
     reply: str
     username: str | None = None
@@ -85,6 +90,7 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
     code = parse_start_command(message.get("text"))
     if code is None:
         return LinkOutcome(
+            chat_id=chat_id,
             linked=False,
             reply="Open Settings in the Notes app and press “Connect Telegram” to link this chat.",
         )
@@ -93,6 +99,7 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
     now = _now()
     if user is None or _expired(user, now):
         return LinkOutcome(
+            chat_id=chat_id,
             linked=False,
             reply="This link is unknown or has expired. Generate a new one in Settings.",
         )
@@ -102,6 +109,7 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
     )
     if taken_by is not None:
         return LinkOutcome(
+            chat_id=chat_id,
             linked=False,
             reply="This Telegram account is already connected to another Notes account.",
         )
@@ -118,6 +126,7 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
     db.commit()
 
     return LinkOutcome(
+        chat_id=chat_id,
         linked=True,
         reply=f"Connected to “{user.username}”. Reminders will arrive here.",
         username=telegram_username,

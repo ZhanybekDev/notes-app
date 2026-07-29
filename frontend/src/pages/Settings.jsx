@@ -18,6 +18,7 @@ export default function Settings() {
   const [prefsError, setPrefsError] = useState(null);
   const [prefsSaved, setPrefsSaved] = useState(false);
   const [linkNotice, setLinkNotice] = useState(false);
+  const [timeDraft, setTimeDraft] = useState('');
 
   const timeZones = useMemo(() => listTimeZones(prefs?.timezone ?? 'UTC'), [prefs?.timezone]);
 
@@ -26,7 +27,9 @@ export default function Settings() {
     api
       .getSettings()
       .then((data) => {
-        if (!cancelled) setPrefs(data);
+        if (cancelled) return;
+        setPrefs(data);
+        setTimeDraft(data.reminder_time.slice(0, 5));
       })
       .catch((err) => {
         if (!cancelled) setPrefsError(err.message);
@@ -40,7 +43,9 @@ export default function Settings() {
     setPrefsError(null);
     setPrefsSaved(false);
     try {
-      setPrefs(await api.updateSettings(patch));
+      const next = await api.updateSettings(patch);
+      setPrefs(next);
+      setTimeDraft(next.reminder_time.slice(0, 5));
       setPrefsSaved(true);
     } catch (err) {
       setPrefsError(err.message);
@@ -65,7 +70,9 @@ export default function Settings() {
     setLinkNotice(false);
     try {
       await api.unlinkTelegram();
-      setPrefs(await api.getSettings());
+      const next = await api.getSettings();
+      setPrefs(next);
+      setTimeDraft(next.reminder_time.slice(0, 5));
     } catch (err) {
       setPrefsError(err.message);
     }
@@ -137,10 +144,19 @@ export default function Settings() {
 
             <label>
               {t('settings.reminderTime')}
+              {/* Committed on blur, not on change: typing 07:30 fires onChange for the hour and
+                  again for the minute, which would send two PATCHes for one edit. */}
               <input
                 type="time"
-                value={prefs.reminder_time.slice(0, 5)}
-                onChange={(e) => e.target.value && patchPrefs({ reminder_time: e.target.value })}
+                value={timeDraft}
+                onChange={(e) => setTimeDraft(e.target.value)}
+                onBlur={() => {
+                  if (timeDraft && timeDraft !== prefs.reminder_time.slice(0, 5)) {
+                    patchPrefs({ reminder_time: timeDraft });
+                  } else if (!timeDraft) {
+                    setTimeDraft(prefs.reminder_time.slice(0, 5));
+                  }
+                }}
               />
             </label>
 

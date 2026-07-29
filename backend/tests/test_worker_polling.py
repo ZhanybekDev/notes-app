@@ -36,7 +36,10 @@ class RecordingClient:
 def wired(db_session, monkeypatch):
     monkeypatch.setattr(worker, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(db_session, "close", lambda: None)
-    return db_session
+    # The failure counters are module-level and would otherwise leak between tests.
+    worker._update_failures.clear()
+    yield db_session
+    worker._update_failures.clear()
 
 
 def start_update(update_id: int, code: str, chat_id: int = 100) -> dict:
@@ -157,6 +160,72 @@ def test_expired_code_is_answered_and_confirmed(wired):
     assert "expired" in client.sent[0][1]
     wired.refresh(user)
     assert user.telegram_chat_id is None
+
+
+def test_persistently_failing_update_is_skipped_instead_of_wedging_the_queue(wired, monkeypatch):
+    """Never confirming is right for a blip and wrong for an update that can never succeed."""
+
+    def always_explode(db, update):
+        raise OperationalError("SELECT 1", {}, Exception("poison"))
+
+    monkeypatch.setattr(worker.telegram_link, "handle_start_command", always_explode)
+
+    offsets = []
+    for _ in range(worker.MAX_UPDATE_ATTEMPTS):
+        client = RecordingClient([[start_update(7, "x")]])
+        offsets.append(worker.process_updates(client, None))
+
+    # Held back while there was hope, then given up on so later bindings are not stuck behind it.
+    assert offsets[:-1] == [None] * (worker.MAX_UPDATE_ATTEMPTS - 1)
+    assert offsets[-1] == 8
+    assert 7 not in worker._update_failures
+
+
+def test_failure_counter_resets_after_a_success(wired, monkeypatch):
+    user = make_user(wired)
+    code, _ = issue_link_code(wired, user)
+    real = worker.telegram_link.handle_start_command
+    fail = {"on": True}
+
+    def flaky(db, update):
+        if fail["on"]:
+            raise OperationalError("SELECT 1", {}, Exception("blip"))
+        return real(db, update)
+
+    monkeypatch.setattr(worker.telegram_link, "handle_start_command", flaky)
+    worker.process_updates(RecordingClient([[start_update(11, code)]]), None)
+    assert worker._update_failures.get(11) == 1
+
+    fail["on"] = False
+    assert worker.process_updates(RecordingClient([[start_update(11, code)]]), None) == 12
+    assert 11 not in worker._update_failures
+
+
+def test_reply_is_retried_once_after_a_rate_limit(wired, monkeypatch):
+    monkeypatch.setattr(worker.time, "sleep", lambda _seconds: None)
+    user = make_user(wired)
+    code, _ = issue_link_code(wired, user)
+
+    class RateLimitedOnce:
+        def __init__(self):
+            self.attempts = 0
+            self.sent = []
+
+        def get_updates(self, offset, timeout):
+            return [start_update(1, code)]
+
+        def send_message(self, chat_id, text):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise TelegramRetryAfter(2)
+            self.sent.append((chat_id, text))
+
+    client = RateLimitedOnce()
+    worker.process_updates(client, None)
+
+    # The binding is already committed, so a dropped confirmation would leave the user in the dark.
+    assert client.attempts == 2
+    assert len(client.sent) == 1
 
 
 class TestWaitForSchema:

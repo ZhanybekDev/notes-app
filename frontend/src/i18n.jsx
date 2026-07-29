@@ -69,6 +69,7 @@ const MESSAGES = {
       reminderAt: 'Reminder at {time}',
       reminderOff: 'Reminders are off',
       reminderSettingsLink: 'Settings',
+      reminderUnknown: 'Could not load reminder settings',
     },
     calendar: {
       today: 'Today',
@@ -184,6 +185,7 @@ const MESSAGES = {
       reminderAt: 'Напоминание в {time}',
       reminderOff: 'Напоминания выключены',
       reminderSettingsLink: 'Настройки',
+      reminderUnknown: 'Не удалось загрузить настройки напоминаний',
     },
     calendar: {
       today: 'Сегодня',

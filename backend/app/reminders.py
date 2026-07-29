@@ -27,6 +27,10 @@ EXCERPT_LIMIT = 300
 # Reconciliation passes run every 30s; bound them so a growing outbox cannot turn each pass into a
 # full-table scan. Whatever a pass does not reach is picked up by the next one.
 RECONCILE_LIMIT = 500
+# Widest legitimate span of UTC offsets (UTC-12 … UTC+14). A pending row can be pushed this far
+# past the horizon by a timezone change, and it still has to stay visible to the passes that
+# maintain it — otherwise it freezes at a schedule nobody will ever correct again.
+MAX_UTC_OFFSET_SPAN = timedelta(hours=26)
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +46,27 @@ def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def _eligible_notes(db: Session, now: datetime) -> list[tuple[Note, User]]:
+def _notes_needing_reminders(db: Session, now: datetime) -> list[tuple[Note, User]]:
+    """Notes that still need a reminder row created or revived.
+
+    The `NOT EXISTS` is what makes the limit safe. Filtering only by date and then capping would
+    starve the tail forever: already-materialised notes would occupy the first `RECONCILE_LIMIT`
+    slots of every pass and the rest would never be reached. Excluding satisfied notes in SQL means
+    the cap applies to outstanding work only.
+    """
     # Bound the scan by calendar date with a day of slack on each side: the exact instant depends
     # on the user's zone, which can shift the boundary either way.
     earliest = (now - BACKFILL_WINDOW).date() - timedelta(days=1)
     latest = (now + MATERIALIZE_HORIZON).date() + timedelta(days=1)
+    already_handled = (
+        select(Reminder.id)
+        .where(
+            Reminder.note_id == Note.id,
+            Reminder.note_date == Note.note_date,
+            Reminder.status != Reminder.STATUS_CANCELLED,
+        )
+        .exists()
+    )
     return (
         db.query(Note, User)
         .join(User, Note.user_id == User.id)
@@ -57,7 +77,10 @@ def _eligible_notes(db: Session, now: datetime) -> list[tuple[Note, User]]:
             Note.archived_at.is_(None),
             User.notifications_enabled.is_(True),
             User.telegram_chat_id.is_not(None),
+            ~already_handled,
         )
+        .order_by(Note.note_date, Note.id)
+        .limit(RECONCILE_LIMIT)
         .all()
     )
 
@@ -76,18 +99,22 @@ def materialize_due(db: Session, now: datetime) -> int:
     would expire every loaded object (`expire_on_commit` is on by default), so each following
     iteration would re-`SELECT` its note and user — measured at 79 queries for 20 notes.
     """
-    candidates = _eligible_notes(db, now)
+    candidates = _notes_needing_reminders(db, now)
     if not candidates:
         return 0
 
-    existing = {
+    revivable = {
         (row.note_id, row.note_date): row
         for row in db.query(Reminder)
-        .filter(Reminder.note_id.in_([note.id for note, _ in candidates]))
+        .filter(
+            Reminder.note_id.in_([note.id for note, _ in candidates]),
+            Reminder.status == Reminder.STATUS_CANCELLED,
+        )
         .all()
     }
 
-    changed = 0
+    revived = 0
+    fresh: list[Reminder] = []
     for note, user in candidates:
         try:
             scheduled_for = compute_scheduled_for(note.note_date, user.timezone, user.reminder_time)
@@ -97,17 +124,16 @@ def materialize_due(db: Session, now: datetime) -> int:
         if not _in_range(scheduled_for, now):
             continue
 
-        row = existing.get((note.id, note.note_date))
+        row = revivable.get((note.id, note.note_date))
         if row is not None:
-            if row.status == Reminder.STATUS_CANCELLED:
-                row.status = Reminder.STATUS_PENDING
-                row.scheduled_for = scheduled_for
-                row.attempts = 0
-                row.last_error = None
-                changed += 1
+            row.status = Reminder.STATUS_PENDING
+            row.scheduled_for = scheduled_for
+            row.attempts = 0
+            row.last_error = None
+            revived += 1
             continue
 
-        db.add(
+        fresh.append(
             Reminder(
                 user_id=user.id,
                 note_id=note.id,
@@ -116,19 +142,25 @@ def materialize_due(db: Session, now: datetime) -> int:
                 status=Reminder.STATUS_PENDING,
             )
         )
-        changed += 1
 
-    if not changed:
-        return 0
+    # Revivals update existing rows and cannot violate the uniqueness constraint, so they are
+    # committed on their own. Folding them into the insert batch would let one losing insert roll
+    # back work that was never in conflict.
+    if revived:
+        db.commit()
+    if not fresh:
+        return revived
+
+    db.add_all(fresh)
     try:
         db.commit()
     except IntegrityError:
         # Safety net for a concurrent producer — normally only a manual tick() alongside the
         # service. The unique constraint is authoritative; the next pass picks the work up.
         db.rollback()
-        logger.warning("materialisation lost a race, retrying next pass")
-        return 0
-    return changed
+        logger.warning("materialisation lost a race on %s rows, retrying next pass", len(fresh))
+        return revived
+    return revived + len(fresh)
 
 
 def resync_pending(db: Session, now: datetime) -> int:
@@ -139,7 +171,7 @@ def resync_pending(db: Session, now: datetime) -> int:
         .join(User, Reminder.user_id == User.id)
         .filter(
             Reminder.status == Reminder.STATUS_PENDING,
-            Reminder.scheduled_for <= now + MATERIALIZE_HORIZON,
+            Reminder.scheduled_for <= now + MATERIALIZE_HORIZON + MAX_UTC_OFFSET_SPAN,
         )
         .order_by(Reminder.scheduled_for)
         .limit(RECONCILE_LIMIT)
@@ -189,7 +221,7 @@ def cancel_stale(db: Session, now: datetime) -> int:
             Reminder.status == Reminder.STATUS_PENDING,
             # Rows further out than the horizon cannot be due yet; overdue ones stay in scope
             # precisely because they are the ones that need cancelling.
-            Reminder.scheduled_for <= now + MATERIALIZE_HORIZON,
+            Reminder.scheduled_for <= now + MATERIALIZE_HORIZON + MAX_UTC_OFFSET_SPAN,
         )
         .order_by(Reminder.scheduled_for)
         .limit(RECONCILE_LIMIT)
@@ -208,16 +240,28 @@ def cancel_stale(db: Session, now: datetime) -> int:
     return cancelled
 
 
-def claim_batch(db: Session, now: datetime, limit: int = 50) -> list[Reminder]:
-    """Lock the reminders that are due. SKIP LOCKED is a no-op on SQLite, exclusive on Postgres."""
+def claim_next(db: Session, now: datetime, exclude: set[int]) -> Reminder | None:
+    """Lock the next due reminder, skipping ones another sender already holds.
+
+    Claims one row rather than a batch so the lock actually covers the whole send: the first
+    `mark_sent`/`mark_failed` commit ends the transaction, which with a batch would release the
+    lock on every row still waiting its turn. `exclude` holds the rows already attempted in this
+    pass, so a row that stayed pending after a failure is not picked up again immediately.
+
+    SKIP LOCKED is a no-op on SQLite and exclusive on Postgres.
+    """
     stmt = (
         select(Reminder)
-        .where(Reminder.status == Reminder.STATUS_PENDING, Reminder.scheduled_for <= now)
+        .where(
+            Reminder.status == Reminder.STATUS_PENDING,
+            Reminder.scheduled_for <= now,
+            Reminder.id.not_in(exclude),
+        )
         .order_by(Reminder.scheduled_for)
-        .limit(limit)
+        .limit(1)
         .with_for_update(skip_locked=True)
     )
-    return list(db.execute(stmt).scalars().all())
+    return db.execute(stmt).scalars().first()
 
 
 def mark_sent(db: Session, reminder: Reminder, now: datetime) -> None:
