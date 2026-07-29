@@ -8,10 +8,27 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import scripts.worker as worker
 from app import deps
 from app.db import Base
 from app.main import app
 from app.rate_limit import reset_auth_rate_limits
+
+
+@pytest.fixture(autouse=True)
+def reset_worker_state():
+    """Clear the worker's module-level counters between tests.
+
+    The failure counters and the materialisation cursor outlive a test otherwise. Today neither
+    can carry a value across — the cursor only fills at RECONCILE_LIMIT candidates — but a test
+    that lowers the limit or seeds many notes would silently become order-dependent, and that is
+    an unpleasant thing to debug.
+    """
+    worker._update_failures.clear()
+    worker._materialize_after = None
+    yield
+    worker._update_failures.clear()
+    worker._materialize_after = None
 
 
 @pytest.fixture()

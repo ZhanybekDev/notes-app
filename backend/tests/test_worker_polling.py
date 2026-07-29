@@ -34,12 +34,10 @@ class RecordingClient:
 
 @pytest.fixture()
 def wired(db_session, monkeypatch):
+    # Module-level worker state is reset by the autouse fixture in conftest.
     monkeypatch.setattr(worker, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(db_session, "close", lambda: None)
-    # The failure counters are module-level and would otherwise leak between tests.
-    worker._update_failures.clear()
-    yield db_session
-    worker._update_failures.clear()
+    return db_session
 
 
 def start_update(update_id: int, code: str, chat_id: int = 100) -> dict:

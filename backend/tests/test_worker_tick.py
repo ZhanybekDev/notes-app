@@ -1,5 +1,6 @@
 """Delivery-pass tests: one iteration of the worker, never the endless loop."""
 
+import logging
 from datetime import UTC, date, datetime, time
 
 import pytest
@@ -10,6 +11,7 @@ from app.models import Note, Reminder, User
 from app.telegram import TelegramError, TelegramRetryAfter
 
 DUE = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
+NOT_DUE = datetime(2026, 8, 1, 6, 0, tzinfo=UTC)
 
 
 class FakeClient:
@@ -59,6 +61,36 @@ def test_poll_backoff_grows_then_caps():
     assert delays == [2, 4, 8, 16, 32, 60, 60, 60]
     # A five-minute outage costs ~10 log lines instead of ~150.
     assert sum(delays[:6]) >= 120
+
+
+def test_incomplete_sweep_is_announced(wired, monkeypatch, caplog):
+    """A sweep that has not caught up delays reminders; it must not be invisible."""
+    monkeypatch.setattr(reminders, "RECONCILE_LIMIT", 1)
+    seed(wired)
+    seed(wired, chat_id=101)
+
+    with caplog.at_level(logging.INFO, logger="worker"):
+        worker.tick(FakeClient(), NOT_DUE)
+
+    assert "sweep in progress" in caplog.text
+
+
+def test_completed_reconciliation_reports_counts_without_the_sweep_marker(wired, caplog):
+    seed(wired)
+
+    with caplog.at_level(logging.INFO, logger="worker"):
+        worker.tick(FakeClient(), NOT_DUE)
+
+    assert "materialised=1" in caplog.text
+    assert "sweep in progress" not in caplog.text
+
+
+def test_quiet_when_there_is_nothing_to_reconcile(wired, caplog):
+    with caplog.at_level(logging.INFO, logger="worker"):
+        worker.tick(FakeClient(), NOT_DUE)
+
+    # A healthy idle worker would otherwise log every 30 seconds forever.
+    assert "reconciled" not in caplog.text
 
 
 def test_due_note_is_delivered(wired):

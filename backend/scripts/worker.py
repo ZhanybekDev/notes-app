@@ -171,9 +171,20 @@ def tick(client: TelegramClient, now: datetime) -> int:
     global _materialize_after
     db = SessionLocal()
     try:
-        reminders.cancel_stale(db, now)
-        _, _materialize_after = reminders.materialize_due(db, now, _materialize_after)
-        reminders.resync_pending(db, now)
+        cancelled = reminders.cancel_stale(db, now)
+        materialised, _materialize_after = reminders.materialize_due(db, now, _materialize_after)
+        resynced = reminders.resync_pending(db, now)
+        # Silent when there is nothing to say, so a healthy worker does not log every 30s. The
+        # sweep marker is the point: materialisation falling behind shows up as late reminders and
+        # is otherwise only visible by reading the database.
+        if cancelled or materialised or resynced or _materialize_after is not None:
+            logger.info(
+                "reconciled: materialised=%s cancelled=%s resynced=%s%s",
+                materialised,
+                cancelled,
+                resynced,
+                " (sweep in progress)" if _materialize_after is not None else "",
+            )
 
         sent = 0
         attempted: set[int] = set()
