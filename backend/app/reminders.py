@@ -15,6 +15,7 @@ from sqlalchemy import select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .bot_i18n import t
 from .models import Note, Reminder, User
 
 # How far back a reminder may still fire. Without this, the first run after a long downtime
@@ -328,12 +329,19 @@ def mark_failed(db: Session, reminder: Reminder, error: str) -> None:
     db.commit()
 
 
-def render_message(note: Note) -> str:
-    """Plain text only — the app stores Markdown, which no parse_mode would survive."""
+def render_message(note: Note, language: str | None = None) -> str:
+    """Plain text only — the app stores Markdown, which no parse_mode would survive.
+
+    `language` is the Telegram client language captured when the chat was linked, so a reminder
+    sent days later reads the same way as the confirmation did.
+    """
     excerpt = " ".join((note.content or "").split())
     if len(excerpt) > EXCERPT_LIMIT:
         excerpt = excerpt[:EXCERPT_LIMIT].rstrip() + "…"
-    lines = [f"⏰ {note.title}", f"Date: {note.note_date.isoformat()}"]
+    lines = [
+        f"⏰ {note.title}",
+        f"{t(language, 'reminder_date')}: {note.note_date.isoformat()}",
+    ]
     if excerpt:
         lines.append("")
         lines.append(excerpt)

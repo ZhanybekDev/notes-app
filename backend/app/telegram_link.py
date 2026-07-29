@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from .bot_i18n import resolve_language, t
 from .models import User
 
 LINK_CODE_TTL = timedelta(minutes=15)
@@ -50,6 +51,7 @@ def issue_link_code(db: Session, user: User) -> tuple[str, datetime]:
 def unlink(db: Session, user: User) -> None:
     user.telegram_chat_id = None
     user.telegram_username = None
+    user.telegram_language = None
     user.telegram_linked_at = None
     user.telegram_link_code = None
     user.telegram_link_code_expires_at = None
@@ -87,12 +89,17 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
     if not isinstance(chat_id, int):
         return None
 
+    sender = message.get("from") or {}
+    # Telegram tells us the client's language on every update, so even the replies sent before any
+    # binding exists can be localised.
+    language = resolve_language(sender.get("language_code"))
+
     code = parse_start_command(message.get("text"))
     if code is None:
         return LinkOutcome(
             chat_id=chat_id,
             linked=False,
-            reply="Open Settings in the Notes app and press “Connect Telegram” to link this chat.",
+            reply=t(language, "start_without_code"),
         )
 
     user = db.query(User).filter(User.telegram_link_code == code).one_or_none()
@@ -101,7 +108,7 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
         return LinkOutcome(
             chat_id=chat_id,
             linked=False,
-            reply="This link is unknown or has expired. Generate a new one in Settings.",
+            reply=t(language, "link_unknown"),
         )
 
     taken_by = (
@@ -111,12 +118,14 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
         return LinkOutcome(
             chat_id=chat_id,
             linked=False,
-            reply="This Telegram account is already connected to another Notes account.",
+            reply=t(language, "link_taken"),
         )
 
-    telegram_username = (message.get("from") or {}).get("username")
+    telegram_username = sender.get("username")
     user.telegram_chat_id = chat_id
     user.telegram_username = telegram_username
+    # Stored so reminders sent days later speak the same language as this reply.
+    user.telegram_language = language
     user.telegram_linked_at = now
     user.telegram_link_code = None
     user.telegram_link_code_expires_at = None
@@ -128,6 +137,6 @@ def handle_start_command(db: Session, update: dict[str, Any]) -> LinkOutcome | N
     return LinkOutcome(
         chat_id=chat_id,
         linked=True,
-        reply=f"Connected to “{user.username}”. Reminders will arrive here.",
+        reply=t(language, "linked", username=user.username),
         username=telegram_username,
     )

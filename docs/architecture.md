@@ -62,6 +62,8 @@ graph TD
 - **`app/schemas.py`** — Pydantic DTOs for request bodies and responses. Decoupled from ORM so wire format can evolve independently (e.g., hiding fields from public responses).
 - **`app/auth.py`** — password hashing (bcrypt) and JWT encoding. Pure functions; no I/O.
 - **`app/telegram.py`** — thin Bot API client (`getUpdates`, `sendMessage`) over `httpx`. Raises `TelegramRetryAfter` for 429 so callers can honour `retry_after` literally. Never sets `parse_mode`: notes are Markdown, and unbalanced markup would make the API reject real notes with 400. The token lives in the request URL, so no error path echoes the URL.
+- **`app/bot_i18n.py`** — message catalogue for everything the bot says, plus the mapping from an
+  IETF tag to a language we have. English is the fallback, matching `i18n.jsx`.
 - **`app/telegram_link.py`** — issuing and redeeming `/start` deep-link codes (15-minute TTL, single use). Binding is what turns notifications on; unlinking turns them off.
 - **`app/reminders.py`** — reminder scheduling: local-time → UTC conversion, outbox materialisation, resync after settings changes, cancellation of rows whose preconditions lapsed, claiming and marking. Pure domain logic over a `Session`.
 - **`app/deps.py`** — FastAPI dependencies: `get_db` (per-request session lifecycle) and `get_current_user` (JWT → `User`). Every protected route goes through `get_current_user`.
@@ -122,6 +124,7 @@ erDiagram
         bool notifications_enabled
         bigint telegram_chat_id
         string telegram_username
+        string telegram_language
         datetime telegram_linked_at
         string telegram_link_code
         datetime telegram_link_code_expires_at
@@ -174,6 +177,7 @@ backend/
 │   ├── auth.py         bcrypt hashing, JWT encode
 │   ├── deps.py         get_db, get_current_user (JWT → User)
 │   ├── telegram.py     Bot API client (getUpdates, sendMessage)
+│   ├── bot_i18n.py     message catalogue for the bot (en / ru)
 │   ├── telegram_link.py deep-link codes, /start redemption
 │   ├── reminders.py    scheduling, outbox reconciliation, delivery bookkeeping
 │   └── routers/
@@ -182,6 +186,7 @@ backend/
 │       ├── notes.py    /notes CRUD, calendar, archive, pin, bulk-delete
 │       └── tags.py     /tags
 ├── alembic/versions/   0001 init · 0002 archive+pin · 0003 telegram settings · 0004 reminders
+│                       0005 (note_date, id) index · 0006 telegram language
 ├── scripts/
 │   ├── seed.py         demo user + sample notes (make seed)
 │   ├── worker.py       long-polling loop + delivery tick (compose service `worker`)
@@ -243,7 +248,10 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
 - **AuthN** — JWT HS256, `JWT_SECRET` from env; token sent as `Authorization: Bearer <token>`.
 - **AuthZ** — ownership check in every route; no roles, no sharing.
 - **Migrations** — Alembic; `alembic upgrade head` runs at backend container startup.
-- **i18n** — two languages (`en`, `ru`); EN is the fallback when a key is missing.
+- **i18n** — two languages (`en`, `ru`); EN is the fallback when a key is missing. The bot has its
+  own catalogue in `app/bot_i18n.py`: it has no session and cannot read the browser's language, so
+  it follows `language_code` from the Telegram update, stored on the account at link time so that
+  reminders sent days later read the same way as the confirmation did.
 - **Theming** — `data-theme="light|dark"` on `<html>`; `system` resolves from `prefers-color-scheme`.
 - **Testing boundary** — backend uses SQLite in tests; any Postgres-specific SQL must stay behind SQLAlchemy or be called out. `claim_batch` uses `FOR UPDATE SKIP LOCKED`, which SQLite silently ignores — the locking behaviour is therefore asserted against the compiled Postgres SQL rather than by running two sessions.
 - **Reminders** — a note's date fires at the owner's `reminder_time` in their `timezone`. Scheduling converts local → UTC once, at materialisation, and re-derives it whenever settings change. Rows are created up to 48 h ahead and never fire more than 24 h late, so a worker that was down does not flush a backlog.

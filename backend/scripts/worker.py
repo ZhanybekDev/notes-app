@@ -203,7 +203,10 @@ def tick(client: TelegramClient, now: datetime) -> int:
                 logger.info("reminder %s no longer applies, cancelled", reminder.id)
                 continue
             try:
-                client.send_message(user.telegram_chat_id, reminders.render_message(note))
+                client.send_message(
+                    user.telegram_chat_id,
+                    reminders.render_message(note, user.telegram_language),
+                )
             except TelegramRetryAfter as exc:
                 reminders.mark_failed(db, reminder, f"rate limited, retry after {exc.seconds}s")
                 logger.warning("rate limited, pausing delivery for %ss", exc.seconds)

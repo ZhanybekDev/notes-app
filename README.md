@@ -56,7 +56,8 @@ the time of day reminders should arrive, then press **Connect Telegram**. Telegr
 bot; press **Start**. The bot confirms, and reminders are switched on automatically.
 
 **4. That's it.** Any note with a date now produces one message at the chosen time, in your time
-zone. Turning the toggle off, unlinking, archiving the note or clearing its date all stop it.
+zone, and in the language your Telegram client is set to — English or Russian, with English as the
+fallback. Turning the toggle off, unlinking, archiving the note or clearing its date all stop it.
 
 Delivery is exactly-once: the reminder is recorded in an outbox keyed by note and date, so a
 restart, a retry after a Telegram rate limit, or a change of time zone cannot produce a second

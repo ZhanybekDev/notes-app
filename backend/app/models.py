@@ -36,6 +36,7 @@ class User(Base):
     )
     telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, unique=True)
     telegram_username: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    telegram_language: Mapped[str | None] = mapped_column(String(8), nullable=True)
     telegram_linked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
