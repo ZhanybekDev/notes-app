@@ -15,6 +15,24 @@ from app.rate_limit import reset_auth_rate_limits
 
 
 @pytest.fixture()
+def db_session(tmp_path):
+    """Plain session for testing domain modules without going through HTTP."""
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'unit.db'}",
+        connect_args={"check_same_thread": False},
+        future=True,
+    )
+    Base.metadata.create_all(bind=engine)
+    TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = TestingSession()
+    try:
+        yield db
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture()
 def client(tmp_path):
     reset_auth_rate_limits()
     db_url = f"sqlite:///{tmp_path / 'test.db'}"

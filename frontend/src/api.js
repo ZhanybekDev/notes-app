@@ -66,6 +66,11 @@ export const api = {
   calendar: (year, month) => request(`/notes/calendar?year=${year}&month=${month}`),
   tags: () => request('/tags'),
 
+  getSettings: () => request('/account/settings'),
+  updateSettings: (patch) => request('/account/settings', { method: 'PATCH', body: patch }),
+  linkTelegram: () => request('/account/telegram/link', { method: 'POST' }),
+  unlinkTelegram: () => request('/account/telegram', { method: 'DELETE' }),
+
   changePassword: (currentPassword, newPassword) =>
     request('/account/change-password', {
       method: 'POST',

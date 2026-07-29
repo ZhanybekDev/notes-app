@@ -1,6 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
+from zoneinfo import available_timezones
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_KNOWN_TIMEZONES = frozenset(available_timezones())
 
 
 class UserCreate(BaseModel):
@@ -66,3 +69,30 @@ class DeleteAccountIn(BaseModel):
 
 class OkOut(BaseModel):
     ok: bool = True
+
+
+class AccountSettingsOut(BaseModel):
+    timezone: str
+    reminder_time: time
+    notifications_enabled: bool
+    telegram_linked: bool
+    telegram_username: str | None
+    bot_configured: bool
+
+
+class AccountSettingsIn(BaseModel):
+    timezone: str | None = None
+    reminder_time: time | None = None
+    notifications_enabled: bool | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is not None and value not in _KNOWN_TIMEZONES:
+            raise ValueError("Unknown IANA timezone")
+        return value
+
+
+class TelegramLinkOut(BaseModel):
+    deep_link_url: str
+    expires_at: datetime

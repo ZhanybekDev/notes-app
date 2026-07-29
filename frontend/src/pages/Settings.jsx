@@ -1,12 +1,75 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { clearToken } from '../auth.js';
 import { useLang } from '../i18n.jsx';
 
+function listTimeZones(current) {
+  const supported =
+    typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+  return supported.includes(current) ? supported : [current, ...supported];
+}
+
 export default function Settings() {
   const { t } = useLang();
   const navigate = useNavigate();
+
+  const [prefs, setPrefs] = useState(null);
+  const [prefsError, setPrefsError] = useState(null);
+  const [prefsSaved, setPrefsSaved] = useState(false);
+  const [linkNotice, setLinkNotice] = useState(false);
+
+  const timeZones = useMemo(() => listTimeZones(prefs?.timezone ?? 'UTC'), [prefs?.timezone]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSettings()
+      .then((data) => {
+        if (!cancelled) setPrefs(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setPrefsError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const patchPrefs = async (patch) => {
+    setPrefsError(null);
+    setPrefsSaved(false);
+    try {
+      setPrefs(await api.updateSettings(patch));
+      setPrefsSaved(true);
+    } catch (err) {
+      setPrefsError(err.message);
+    }
+  };
+
+  const connectTelegram = async () => {
+    setPrefsError(null);
+    setLinkNotice(false);
+    try {
+      const { deep_link_url: url } = await api.linkTelegram();
+      window.open(url, '_blank', 'noopener');
+      setLinkNotice(true);
+    } catch (err) {
+      setPrefsError(err.message);
+    }
+  };
+
+  const disconnectTelegram = async () => {
+    if (!window.confirm(t('settings.confirmDisconnect'))) return;
+    setPrefsError(null);
+    setLinkNotice(false);
+    try {
+      await api.unlinkTelegram();
+      setPrefs(await api.getSettings());
+    } catch (err) {
+      setPrefsError(err.message);
+    }
+  };
 
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -46,6 +109,87 @@ export default function Settings() {
   return (
     <div className="settings-page">
       <h1>{t('settings.title')}</h1>
+
+      <section className="settings-card">
+        <h2>{t('settings.notificationsTitle')}</h2>
+        <p className="settings-hint">{t('settings.notificationsHint')}</p>
+
+        {prefs === null && prefsError === null && <div className="settings-hint">…</div>}
+        {prefs !== null && !prefs.bot_configured && (
+          <div className="notice-warning">{t('settings.botNotConfigured')}</div>
+        )}
+
+        {prefs !== null && (
+          <div className="notifications-grid">
+            <label>
+              {t('settings.timezone')}
+              <select
+                value={prefs.timezone}
+                onChange={(e) => patchPrefs({ timezone: e.target.value })}
+              >
+                {timeZones.map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              {t('settings.reminderTime')}
+              <input
+                type="time"
+                value={prefs.reminder_time.slice(0, 5)}
+                onChange={(e) => e.target.value && patchPrefs({ reminder_time: e.target.value })}
+              />
+            </label>
+
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={prefs.notifications_enabled}
+                onChange={(e) => patchPrefs({ notifications_enabled: e.target.checked })}
+              />
+              {t('settings.enableNotifications')}
+            </label>
+
+            <div className="telegram-status">
+              {prefs.telegram_linked ? (
+                <>
+                  <span className="badge-linked">
+                    {prefs.telegram_username
+                      ? t('settings.telegramConnected', { username: prefs.telegram_username })
+                      : t('settings.telegramConnectedNoUsername')}
+                  </span>
+                  <button type="button" className="btn btn-ghost" onClick={disconnectTelegram}>
+                    {t('settings.disconnectTelegram')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="settings-hint">{t('settings.telegramNotConnected')}</span>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={connectTelegram}
+                    disabled={!prefs.bot_configured}
+                  >
+                    {t('settings.connectTelegram')}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {linkNotice && (
+          <div className="success">
+            {t('settings.linkOpened')} {t('settings.linkExpires')}
+          </div>
+        )}
+        {prefsSaved && <div className="success">{t('settings.settingsSaved')}</div>}
+        {prefsError && <div className="error">{prefsError}</div>}
+      </section>
 
       <section className="settings-card">
         <h2>{t('settings.changePasswordTitle')}</h2>

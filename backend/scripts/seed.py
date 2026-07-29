@@ -1,6 +1,6 @@
 """Seed a demo user with a few notes. Idempotent: wipes the demo user before inserting."""
 
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 from app.auth import hash_password
 from app.db import SessionLocal
@@ -18,7 +18,12 @@ def seed() -> None:
             db.delete(existing)
             db.commit()
 
-        user = User(username=DEMO_USERNAME, password_hash=hash_password(DEMO_PASSWORD))
+        user = User(
+            username=DEMO_USERNAME,
+            password_hash=hash_password(DEMO_PASSWORD),
+            timezone="UTC",
+            reminder_time=time(9, 0),
+        )
         db.add(user)
         db.flush()
 
@@ -51,6 +56,16 @@ def seed() -> None:
                 content="_Fleeting thought worth keeping._",
                 tags=["ideas"],
                 note_date=None,
+            ),
+            Note(
+                user_id=user.id,
+                title="Reminder demo",
+                content=(
+                    "Dated today. Connect Telegram in Settings, set the reminder time a "
+                    "minute ahead, and this note is what the bot sends."
+                ),
+                tags=["demo"],
+                note_date=today,
             ),
         ]
         db.add_all(notes)

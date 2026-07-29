@@ -31,6 +31,21 @@ services:
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
+  worker:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    # TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME are intentionally absent here: pydantic-settings
+    # already reads backend/.env (mounted at /app/.env). Declaring them as ${VAR:-} would
+    # interpolate to "" and silently override the file.
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/notes
+      JWT_SECRET: dev-secret-change-me-please-32bytes
+    volumes:
+      - ./backend:/app
+    command: python -m scripts.worker
+
   frontend:
     build: ./frontend
     depends_on:
