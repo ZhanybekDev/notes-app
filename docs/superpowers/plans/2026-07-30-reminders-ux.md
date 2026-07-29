@@ -101,8 +101,9 @@ describe('reminderStatus', () => {
 
 describe('formatNoteDate', () => {
   it('formats without shifting the day', () => {
+    // Day-first is British, not English at large: 'en' resolves to the US order.
     expect(formatNoteDate('2026-07-30', 'ru')).toBe('30 июля');
-    expect(formatNoteDate('2026-07-30', 'en')).toBe('30 July');
+    expect(formatNoteDate('2026-07-30', 'en')).toBe('July 30');
   });
 });
 ```
@@ -199,7 +200,7 @@ still backfills the last 24 hours."
 ```jsx
 // frontend/src/hooks/useTelegramLink.test.js
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { POLL_TIMEOUT_MS, useTelegramLink } from './useTelegramLink.js';
 import { api } from '../api.js';
@@ -227,7 +228,7 @@ describe('useTelegramLink', () => {
     vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
     const { result } = renderHook(() => useTelegramLink({ onLinked: vi.fn() }));
 
-    await result.current.connect();
+    await act(() => result.current.connect());
 
     expect(window.open).toHaveBeenCalledWith(
       'https://t.me/bot?start=code',
@@ -245,8 +246,8 @@ describe('useTelegramLink', () => {
       .mockResolvedValue(LINKED);
     const { result } = renderHook(() => useTelegramLink({ onLinked }));
 
-    await result.current.connect();
-    await vi.advanceTimersByTimeAsync(6000);
+    await act(() => result.current.connect());
+    await act(() => vi.advanceTimersByTimeAsync(6000));
 
     expect(result.current.status).toBe('linked');
     expect(onLinked).toHaveBeenCalledTimes(1);
@@ -257,8 +258,8 @@ describe('useTelegramLink', () => {
     vi.spyOn(api, 'getSettings').mockResolvedValue(LINKED);
     const { result } = renderHook(() => useTelegramLink({ onLinked: vi.fn() }));
 
-    await result.current.connect();
-    await vi.advanceTimersByTimeAsync(2000);
+    await act(() => result.current.connect());
+    await act(() => vi.advanceTimersByTimeAsync(2000));
     const callsWhenLinked = api.getSettings.mock.calls.length;
     await vi.advanceTimersByTimeAsync(20000);
 
@@ -269,8 +270,8 @@ describe('useTelegramLink', () => {
     vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
     const { result } = renderHook(() => useTelegramLink({ onLinked: vi.fn() }));
 
-    await result.current.connect();
-    await vi.advanceTimersByTimeAsync(POLL_TIMEOUT_MS + 1000);
+    await act(() => result.current.connect());
+    await act(() => vi.advanceTimersByTimeAsync(POLL_TIMEOUT_MS + 1000));
     const callsAtTimeout = api.getSettings.mock.calls.length;
     await vi.advanceTimersByTimeAsync(20000);
 
@@ -282,8 +283,8 @@ describe('useTelegramLink', () => {
     vi.spyOn(api, 'getSettings').mockRejectedValue(new Error('Unauthorized'));
     const { result } = renderHook(() => useTelegramLink({ onLinked: vi.fn() }));
 
-    await result.current.connect();
-    await vi.advanceTimersByTimeAsync(2000);
+    await act(() => result.current.connect());
+    await act(() => vi.advanceTimersByTimeAsync(2000));
     const callsAtError = api.getSettings.mock.calls.length;
     await vi.advanceTimersByTimeAsync(20000);
 
@@ -297,7 +298,7 @@ describe('useTelegramLink', () => {
     api.linkTelegram.mockRejectedValue(new Error('Telegram bot is not configured'));
     const { result } = renderHook(() => useTelegramLink({ onLinked: vi.fn() }));
 
-    await result.current.connect();
+    await act(() => result.current.connect());
 
     expect(result.current.status).toBe('error');
     expect(result.current.error).toBe('Telegram bot is not configured');
@@ -308,7 +309,7 @@ describe('useTelegramLink', () => {
     vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
     const { result, unmount } = renderHook(() => useTelegramLink({ onLinked: vi.fn() }));
 
-    await result.current.connect();
+    await act(() => result.current.connect());
     expect(vi.getTimerCount()).toBeGreaterThan(0);
     unmount();
 
@@ -319,12 +320,12 @@ describe('useTelegramLink', () => {
     const onLinked = vi.fn();
     vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
     const { result } = renderHook(() => useTelegramLink({ onLinked }));
-    await result.current.connect();
+    await act(() => result.current.connect());
     await vi.advanceTimersByTimeAsync(POLL_TIMEOUT_MS + 1000);
     expect(result.current.status).toBe('timeout');
 
     api.getSettings.mockResolvedValue(LINKED);
-    await result.current.recheck();
+    await act(() => result.current.recheck());
 
     expect(result.current.status).toBe('linked');
     expect(onLinked).toHaveBeenCalledWith(LINKED);
@@ -501,7 +502,7 @@ describe('NoteEditor reminder hint', () => {
   it('names the day and time for a future date', () => {
     renderEditor({ note: { note_date: '2026-08-01', title: 'x', content: '', tags: [] }, reminderPrefs: PREFS });
 
-    expect(screen.getByText('Reminder on 1 August at 09:00')).toBeInTheDocument();
+    expect(screen.getByText('Reminder on August 1 at 09:00')).toBeInTheDocument();
   });
 
   it('says the moment has passed for an earlier date', () => {
