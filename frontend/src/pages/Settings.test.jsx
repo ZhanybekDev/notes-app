@@ -37,6 +37,8 @@ function renderSettings() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // The time zone suggestion remembers its dismissal; without this it leaks between tests.
+  localStorage.clear();
 });
 
 describe('Settings — Telegram reminders', () => {
@@ -227,5 +229,63 @@ describe('Settings — Telegram reminders', () => {
     // Real timers on purpose. Fake timers plus userEvent plus Testing Library's async wrapper is
     // a known source of flakes, and 2.5s once is cheaper than a test that fails at random.
     await waitForElementToBeRemoved(saved, { timeout: 4000 });
+  });
+  it('offers the browser time zone while the account is still on UTC', async () => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone: 'Asia/Bishkek' }),
+    });
+    vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
+
+    renderSettings();
+
+    // Matched on the whole sentence: the zone name alone also appears among the select options.
+    expect(
+      await screen.findByText('Looks like your time zone is Asia/Bishkek')
+    ).toBeInTheDocument();
+  });
+
+  it('applies the suggested zone in one click', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone: 'Asia/Bishkek' }),
+    });
+    vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
+    const update = vi
+      .spyOn(api, 'updateSettings')
+      .mockResolvedValue({ ...UNLINKED, timezone: 'Asia/Bishkek' });
+
+    renderSettings();
+    await user.click(await screen.findByRole('button', { name: 'Use it' }));
+
+    expect(update).toHaveBeenCalledWith({ timezone: 'Asia/Bishkek' });
+  });
+
+  it('stays quiet once the account has a zone of its own', async () => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone: 'Asia/Bishkek' }),
+    });
+    vi.spyOn(api, 'getSettings').mockResolvedValue(LINKED);
+
+    renderSettings();
+    await screen.findByText('Connected as @alice_tg');
+
+    expect(screen.queryByRole('button', { name: 'Use it' })).not.toBeInTheDocument();
+  });
+
+  it('remembers a dismissal', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone: 'Asia/Bishkek' }),
+    });
+    vi.spyOn(api, 'getSettings').mockResolvedValue(UNLINKED);
+
+    const { unmount } = renderSettings();
+    await user.click(await screen.findByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('button', { name: 'Use it' })).not.toBeInTheDocument();
+    unmount();
+
+    renderSettings();
+    await screen.findByRole('checkbox');
+    expect(screen.queryByRole('button', { name: 'Use it' })).not.toBeInTheDocument();
   });
 });

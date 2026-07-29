@@ -6,11 +6,28 @@ import { useLang } from '../i18n.jsx';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
 
 const SAVED_NOTICE_MS = 2500;
+const TZ_DISMISS_KEY = 'notes_tz_suggestion_dismissed';
 
 function listTimeZones(current) {
   const supported =
     typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
   return supported.includes(current) ? supported : [current, ...supported];
+}
+
+function browserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
+function readDismissed() {
+  try {
+    return localStorage.getItem(TZ_DISMISS_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 export default function Settings() {
@@ -21,8 +38,27 @@ export default function Settings() {
   const [prefsError, setPrefsError] = useState(null);
   const [prefsSaved, setPrefsSaved] = useState(false);
   const [timeDraft, setTimeDraft] = useState('');
+  const [tzDismissed, setTzDismissed] = useState(readDismissed);
 
   const timeZones = useMemo(() => listTimeZones(prefs?.timezone ?? 'UTC'), [prefs?.timezone]);
+  const suggestedZone = useMemo(() => browserTimeZone(), []);
+  // Suggest, never apply: changing a stored zone moves every future reminder without asking.
+  // 'UTC' is the untouched server default, so anything else means the user has already chosen.
+  const showTzSuggestion =
+    prefs !== null &&
+    prefs.timezone === 'UTC' &&
+    Boolean(suggestedZone) &&
+    suggestedZone !== 'UTC' &&
+    !tzDismissed;
+
+  const dismissTzSuggestion = () => {
+    try {
+      localStorage.setItem(TZ_DISMISS_KEY, '1');
+    } catch {
+      // Private mode; the suggestion simply returns next time.
+    }
+    setTzDismissed(true);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +174,27 @@ export default function Settings() {
 
         {prefs !== null && (
           <div className="notifications-grid">
+            {showTzSuggestion && (
+              <div className="tz-suggestion">
+                <span>{t('settings.timezoneSuggestion', { zone: suggestedZone })}</span>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => patchPrefs({ timezone: suggestedZone })}
+                  title={t('tips.timezoneSuggestionApply')}
+                >
+                  {t('settings.timezoneSuggestionApply')}
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={dismissTzSuggestion}
+                  title={t('tips.timezoneSuggestionDismiss')}
+                >
+                  {t('settings.timezoneSuggestionDismiss')}
+                </button>
+              </div>
+            )}
             <label>
               {t('settings.timezone')}
               <select
