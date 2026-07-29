@@ -19,7 +19,7 @@ Requirements: Docker with Compose.
 
 ```bash
 make up          # start db + backend + frontend
-make seed        # (optional) create a demo user with a few notes
+make seed        # (optional) create a demo user with a few notes; safe to re-run
 ```
 
 Then open <http://localhost:5173>.

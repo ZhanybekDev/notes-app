@@ -1,4 +1,10 @@
-"""Seed a demo user with a few notes. Idempotent: wipes the demo user before inserting."""
+"""Seed a demo user with a few notes.
+
+Idempotent, and deliberately non-destructive about the account itself: re-seeding replaces the
+notes but keeps the Telegram binding and the reminder preferences. Deleting the user, which is
+what this used to do, meant every `make seed` silently un-linked the bot and sent whoever was
+testing back to Telegram to press Start again.
+"""
 
 from datetime import date, time, timedelta
 
@@ -13,18 +19,20 @@ DEMO_PASSWORD = "demo1234"
 def seed() -> None:
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.username == DEMO_USERNAME).one_or_none()
-        if existing:
-            db.delete(existing)
-            db.commit()
-
-        user = User(
-            username=DEMO_USERNAME,
-            password_hash=hash_password(DEMO_PASSWORD),
-            timezone="UTC",
-            reminder_time=time(9, 0),
-        )
-        db.add(user)
+        user = db.query(User).filter(User.username == DEMO_USERNAME).one_or_none()
+        if user is None:
+            user = User(
+                username=DEMO_USERNAME,
+                password_hash=hash_password(DEMO_PASSWORD),
+                timezone="UTC",
+                reminder_time=time(9, 0),
+            )
+            db.add(user)
+        else:
+            # Only the password is forced back, so the credentials in the README stay true.
+            # Everything else on the account is the tester's, not ours.
+            user.password_hash = hash_password(DEMO_PASSWORD)
+            db.query(Note).filter(Note.user_id == user.id).delete(synchronize_session=False)
         db.flush()
 
         today = date.today()
@@ -70,7 +78,11 @@ def seed() -> None:
         ]
         db.add_all(notes)
         db.commit()
-        print(f"Seeded '{DEMO_USERNAME}' / '{DEMO_PASSWORD}' with {len(notes)} notes.")
+        linked = "linked" if user.telegram_chat_id else "not linked"
+        print(
+            f"Seeded '{DEMO_USERNAME}' / '{DEMO_PASSWORD}' with {len(notes)} notes. "
+            f"Telegram: {linked}."
+        )
     finally:
         db.close()
 

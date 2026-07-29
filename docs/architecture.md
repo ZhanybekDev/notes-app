@@ -69,7 +69,10 @@ graph TD
 - **`app/deps.py`** — FastAPI dependencies: `get_db` (per-request session lifecycle) and `get_current_user` (JWT → `User`). Every protected route goes through `get_current_user`.
 - **`app/routers/*`** — HTTP surface. Each router owns one area (`auth`, `account`, `notes`, `tags`) and is the **only** place allowed to call the ORM directly. Routers never import each other.
 - **`alembic/versions/*`** — schema migrations, applied at container start. Must be reversible (both `upgrade` and `downgrade`).
-- **`scripts/seed.py`** — idempotent demo data (wipes the demo user, recreates).
+- **`scripts/seed.py`** — idempotent demo data. Replaces the demo notes but leaves the account
+  alone: it used to delete the user, which meant every re-seed silently dropped the Telegram
+  binding and the reminder preferences. Only the password is forced back, so the credentials
+  in the README stay true.
 - **`scripts/dump_openapi.py`** — emits `app.openapi()` JSON; drives `make openapi-dump` and the drift test.
 
 ### Frontend packages
@@ -188,7 +191,7 @@ backend/
 ├── alembic/versions/   0001 init · 0002 archive+pin · 0003 telegram settings · 0004 reminders
 │                       0005 (note_date, id) index · 0006 telegram language
 ├── scripts/
-│   ├── seed.py         demo user + sample notes (make seed)
+│   ├── seed.py         demo notes; keeps the account and its Telegram binding
 │   ├── worker.py       long-polling loop + delivery tick (compose service `worker`)
 │   └── dump_openapi.py regenerates openapi.json (make openapi-dump)
 ├── tests/              pytest + cov (threshold 80%)
