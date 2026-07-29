@@ -46,6 +46,21 @@ const NoteEditor = forwardRef(function NoteEditor(
     });
   };
 
+  // One source of truth for the hint, so the failure and success cases cannot both render.
+  let reminderHint = null;
+  if (reminderPrefsFailed) {
+    reminderHint = t('editor.reminderUnknown');
+  } else if (reminderPrefs) {
+    reminderHint =
+      reminderPrefs.notifications_enabled && reminderPrefs.telegram_linked ? (
+        t('editor.reminderAt', { time: reminderPrefs.reminder_time.slice(0, 5) })
+      ) : (
+        <>
+          {t('editor.reminderOff')} <Link to="/settings">{t('editor.reminderSettingsLink')}</Link>
+        </>
+      );
+  }
+
   const isPersisted = Boolean(note);
   const isPinned = Boolean(draft.pinned_at);
   const isArchived = Boolean(draft.archived_at);
@@ -89,21 +104,9 @@ const NoteEditor = forwardRef(function NoteEditor(
             value={draft.note_date || ''}
             onChange={(e) => setDraft({ ...draft, note_date: e.target.value || null })}
           />
-          {draft.note_date && reminderPrefsFailed && (
-            <span className="reminder-hint reminder-hint-failed">
-              {t('editor.reminderUnknown')}
-            </span>
-          )}
-          {draft.note_date && reminderPrefs && (
-            <span className="reminder-hint">
-              {reminderPrefs.notifications_enabled && reminderPrefs.telegram_linked ? (
-                t('editor.reminderAt', { time: reminderPrefs.reminder_time.slice(0, 5) })
-              ) : (
-                <>
-                  {t('editor.reminderOff')}{' '}
-                  <Link to="/settings">{t('editor.reminderSettingsLink')}</Link>
-                </>
-              )}
+          {draft.note_date && reminderHint && (
+            <span className={`reminder-hint${reminderPrefsFailed ? ' reminder-hint-failed' : ''}`}>
+              {reminderHint}
             </span>
           )}
         </label>

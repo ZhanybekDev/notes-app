@@ -45,7 +45,9 @@ export default function Settings() {
     try {
       const next = await api.updateSettings(patch);
       setPrefs(next);
-      setTimeDraft(next.reminder_time.slice(0, 5));
+      // Only resync the draft when this patch was about the time. Otherwise changing the time
+      // zone would quietly discard an edit the user had typed but not yet committed.
+      if ('reminder_time' in patch) setTimeDraft(next.reminder_time.slice(0, 5));
       setPrefsSaved(true);
     } catch (err) {
       setPrefsError(err.message);

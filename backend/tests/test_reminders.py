@@ -71,7 +71,7 @@ class TestMaterialize:
         user = make_user(db_session, tz="Asia/Bishkek")
         note = make_note(db_session, user)
 
-        assert reminders.materialize_due(db_session, NOW) == 1
+        assert reminders.materialize_due(db_session, NOW)[0] == 1
 
         row = db_session.query(Reminder).one()
         assert row.note_id == note.id
@@ -92,37 +92,37 @@ class TestMaterialize:
         user = make_user(db_session)
         make_note(db_session, user, archived=True)
 
-        assert reminders.materialize_due(db_session, NOW) == 0
+        assert reminders.materialize_due(db_session, NOW)[0] == 0
 
     def test_skips_disabled_notifications(self, db_session):
         user = make_user(db_session, enabled=False)
         make_note(db_session, user)
 
-        assert reminders.materialize_due(db_session, NOW) == 0
+        assert reminders.materialize_due(db_session, NOW)[0] == 0
 
     def test_skips_unlinked_telegram(self, db_session):
         user = make_user(db_session, chat_id=None)
         make_note(db_session, user)
 
-        assert reminders.materialize_due(db_session, NOW) == 0
+        assert reminders.materialize_due(db_session, NOW)[0] == 0
 
     def test_skips_note_without_date(self, db_session):
         user = make_user(db_session)
         make_note(db_session, user, note_date=None)
 
-        assert reminders.materialize_due(db_session, NOW) == 0
+        assert reminders.materialize_due(db_session, NOW)[0] == 0
 
     def test_skips_note_older_than_backfill_window(self, db_session):
         user = make_user(db_session)
         make_note(db_session, user, note_date=date(2026, 7, 20))
 
-        assert reminders.materialize_due(db_session, NOW) == 0
+        assert reminders.materialize_due(db_session, NOW)[0] == 0
 
     def test_skips_note_beyond_horizon(self, db_session):
         user = make_user(db_session)
         make_note(db_session, user, note_date=date(2026, 9, 1))
 
-        assert reminders.materialize_due(db_session, NOW) == 0
+        assert reminders.materialize_due(db_session, NOW)[0] == 0
 
     def test_revives_cancelled_row_when_conditions_return(self, db_session):
         user = make_user(db_session)
@@ -179,7 +179,7 @@ class TestQueryCost:
                 selects.append(statement)
 
         try:
-            assert reminders.materialize_due(db, NOW) == note_count
+            assert reminders.materialize_due(db, NOW)[0] == note_count
         finally:
             event.remove(engine, "before_cursor_execute", _record)
         return len(selects)
@@ -195,11 +195,43 @@ class TestQueryCost:
         for i in range(7):
             make_note(db_session, user, title=f"n{i}")
 
-        assert reminders.materialize_due(db_session, NOW) == 3
-        assert reminders.materialize_due(db_session, NOW) == 3
-        assert reminders.materialize_due(db_session, NOW) == 1
-        assert reminders.materialize_due(db_session, NOW) == 0
+        assert reminders.materialize_due(db_session, NOW)[0] == 3
+        assert reminders.materialize_due(db_session, NOW)[0] == 3
+        assert reminders.materialize_due(db_session, NOW)[0] == 1
+        assert reminders.materialize_due(db_session, NOW)[0] == 0
         assert db_session.query(Reminder).count() == 7
+
+    def test_permanently_rejected_notes_do_not_starve_due_ones(self, db_session, monkeypatch):
+        """Notes in the slack band are rejected by `_in_range` on every pass and never get a row.
+
+        Sorted by date they come first, so with a fixed quota and no cursor they would keep the
+        pass from ever reaching the note that is actually due.
+        """
+        monkeypatch.setattr(reminders, "RECONCILE_LIMIT", 2)
+        user = make_user(db_session)
+        earliest, _ = reminders._candidate_date_range(NOW)
+        for i in range(5):
+            make_note(db_session, user, note_date=earliest, title=f"stale{i}")
+        due = make_note(db_session, user, note_date=date(2026, 8, 1), title="due")
+
+        after = None
+        for _ in range(6):
+            _, after = reminders.materialize_due(db_session, NOW, after)
+
+        rows = db_session.query(Reminder).all()
+        assert [row.note_id for row in rows] == [due.id]
+
+    def test_cursor_clears_once_the_window_is_exhausted(self, db_session, monkeypatch):
+        monkeypatch.setattr(reminders, "RECONCILE_LIMIT", 2)
+        user = make_user(db_session)
+        for i in range(2):
+            make_note(db_session, user, title=f"n{i}")
+
+        _, after = reminders.materialize_due(db_session, NOW, None)
+        assert after is not None  # quota filled, more may follow
+
+        _, after = reminders.materialize_due(db_session, NOW, after)
+        assert after is None  # nothing left, next pass starts over
 
     def test_reads_do_not_scale_with_note_count(self, db_session):
         """Committing inside the loop expired every loaded object and re-SELECTed it.
@@ -433,3 +465,28 @@ class TestRenderMessage:
         db_session.commit()
 
         assert "Standup" in reminders.render_message(note)
+
+
+class TestCandidateRange:
+    def test_window_covers_every_timezone_the_delivery_window_can_reach(self, db_session):
+        """The SQL date filter must not drop a note whose instant lands inside the window.
+
+        This is the invariant three consecutive rounds of edits kept drifting away from: the date
+        filter and `_in_range` were tuned separately. Sweeping the extremes of both offset bounds
+        pins them together, so a future change to either one fails here rather than in production.
+        """
+        earliest, latest = reminders._candidate_date_range(NOW)
+        step = timedelta(days=1)
+        probe = earliest - step * 2
+        while probe <= latest + step * 2:
+            for tz, reminder_time in (
+                ("Etc/GMT+12", time(23, 59)),
+                ("Etc/GMT-14", time(0, 0)),
+                ("UTC", time(12, 0)),
+            ):
+                scheduled = reminders.compute_scheduled_for(probe, tz, reminder_time)
+                if reminders._in_range(scheduled, NOW):
+                    assert earliest <= probe <= latest, (
+                        f"{probe} in {tz} at {reminder_time} is deliverable but outside the scan"
+                    )
+            probe += step

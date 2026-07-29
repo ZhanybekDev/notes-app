@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import signal
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import FrameType
 
 from sqlalchemy import text
@@ -47,7 +47,10 @@ _shutdown = False
 # Consecutive failures per update, so one unprocessable update cannot wedge the queue forever.
 # Deliberately in-process and ephemeral: a restart resets the counters, which just means the
 # update gets its retries again — the durable state that matters lives in the outbox table.
-_update_failures: dict[object, int] = {}
+_update_failures: dict[int, int] = {}
+# Where the last materialisation pass stopped. Ephemeral by design: losing it on restart only
+# means the next sweep starts from the beginning of the window.
+_materialize_after: tuple[date, int] | None = None
 
 
 def _request_shutdown(signum: int, frame: FrameType | None) -> None:
@@ -98,6 +101,11 @@ def process_updates(client: TelegramClient, offset: int | None) -> int | None:
     next_offset = offset
     for update in updates:
         update_id = update.get("update_id")
+        if not isinstance(update_id, int):
+            # Without a usable id the offset cannot move past it, so retrying would be pointless.
+            # The Bot API always sends one; this only guards against a malformed payload.
+            logger.error("update without a usable update_id, skipping")
+            continue
 
         db = SessionLocal()
         try:
@@ -115,8 +123,7 @@ def process_updates(client: TelegramClient, offset: int | None) -> int | None:
                     attempts,
                 )
                 del _update_failures[update_id]
-                if isinstance(update_id, int):
-                    next_offset = update_id + 1
+                next_offset = update_id + 1
                 continue
             # Stop without confirming this update or the rest of the batch. Advancing the offset
             # here would tell Telegram we handled it, and a transient database blip would cost the
@@ -129,8 +136,7 @@ def process_updates(client: TelegramClient, offset: int | None) -> int | None:
 
         # Only now is the update genuinely handled.
         _update_failures.pop(update_id, None)
-        if isinstance(update_id, int):
-            next_offset = update_id + 1
+        next_offset = update_id + 1
 
         if outcome is None:
             continue
@@ -162,10 +168,11 @@ def _reply(client: TelegramClient, outcome: telegram_link.LinkOutcome) -> None:
 
 def tick(client: TelegramClient, now: datetime) -> int:
     """One delivery pass: reconcile the outbox, then send whatever is due."""
+    global _materialize_after
     db = SessionLocal()
     try:
         reminders.cancel_stale(db, now)
-        reminders.materialize_due(db, now)
+        _, _materialize_after = reminders.materialize_due(db, now, _materialize_after)
         reminders.resync_pending(db, now)
 
         sent = 0

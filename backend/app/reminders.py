@@ -11,7 +11,7 @@ import logging
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -27,10 +27,13 @@ EXCERPT_LIMIT = 300
 # Reconciliation passes run every 30s; bound them so a growing outbox cannot turn each pass into a
 # full-table scan. Whatever a pass does not reach is picked up by the next one.
 RECONCILE_LIMIT = 500
-# Widest legitimate span of UTC offsets (UTC-12 … UTC+14). A pending row can be pushed this far
-# past the horizon by a timezone change, and it still has to stay visible to the passes that
-# maintain it — otherwise it freezes at a schedule nobody will ever correct again.
-MAX_UTC_OFFSET_SPAN = timedelta(hours=26)
+# Real-world bounds on UTC offsets: UTC-12 … UTC+14.
+MAX_UTC_OFFSET_EAST = timedelta(hours=14)
+MAX_UTC_OFFSET_WEST = timedelta(hours=12)
+# A pending row can be pushed this far past the horizon by a timezone change, and it still has to
+# stay visible to the passes that maintain it — otherwise it freezes at a schedule nobody will
+# ever correct again.
+MAX_UTC_OFFSET_SPAN = MAX_UTC_OFFSET_EAST + MAX_UTC_OFFSET_WEST
 
 logger = logging.getLogger(__name__)
 
@@ -46,18 +49,42 @@ def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def _notes_needing_reminders(db: Session, now: datetime) -> list[tuple[Note, User]]:
-    """Notes that still need a reminder row created or revived.
+def _candidate_date_range(now: datetime) -> tuple[date, date]:
+    """Widest range of `note_date` values that could possibly land inside the delivery window.
 
-    The `NOT EXISTS` is what makes the limit safe. Filtering only by date and then capping would
-    starve the tail forever: already-materialised notes would occupy the first `RECONCILE_LIMIT`
-    slots of every pass and the rest would never be reached. Excluding satisfied notes in SQL means
-    the cap applies to outstanding work only.
+    A note's instant is `note_date + reminder_time - utc_offset`, with `reminder_time` anywhere in
+    the day and the offset between -12h and +14h, so the instant sits somewhere in
+    `[note_date - 14h, note_date + 36h]`. Intersecting that with the delivery window gives these
+    bounds.
+
+    Derived rather than guessed at, because the previous flat day of slack was only accidentally
+    right: sufficient at the bottom, a day too generous at the top. Both ends err on the side of
+    including dates that `_in_range` will reject — truncating to a date can only widen the range —
+    and that is the safe direction, since the cost of an extra candidate is one rejected row in a
+    sweep, while the cost of a missing one is a reminder that never fires.
     """
-    # Bound the scan by calendar date with a day of slack on each side: the exact instant depends
-    # on the user's zone, which can shift the boundary either way.
-    earliest = (now - BACKFILL_WINDOW).date() - timedelta(days=1)
-    latest = (now + MATERIALIZE_HORIZON).date() + timedelta(days=1)
+    earliest = now - BACKFILL_WINDOW - timedelta(days=1) - MAX_UTC_OFFSET_WEST
+    latest = now + MATERIALIZE_HORIZON + MAX_UTC_OFFSET_EAST
+    return earliest.date(), latest.date()
+
+
+def _notes_needing_reminders(
+    db: Session, now: datetime, after: tuple[date, int] | None
+) -> list[tuple[Note, User]]:
+    """Notes that still need a reminder row created or revived, starting after `after`.
+
+    Two mechanisms keep the capped pass honest:
+
+    `NOT EXISTS` drops notes that already have a live row, so the cap applies to outstanding work
+    rather than to everything in the date window.
+
+    `after` sweeps. The date range has to be wider than the delivery window — SQL cannot evaluate
+    a user's timezone — so some candidates are rejected by `_in_range` on every pass and never
+    produce a row. Sorted by date they cluster at the start, and with a fixed cap they would keep
+    the pass from ever reaching notes that are genuinely due. Resuming past the last examined note
+    means a few passes sweep the whole window instead of re-reading the same dead prefix.
+    """
+    earliest, latest = _candidate_date_range(now)
     already_handled = (
         select(Reminder.id)
         .where(
@@ -67,7 +94,7 @@ def _notes_needing_reminders(db: Session, now: datetime) -> list[tuple[Note, Use
         )
         .exists()
     )
-    return (
+    query = (
         db.query(Note, User)
         .join(User, Note.user_id == User.id)
         .filter(
@@ -79,29 +106,46 @@ def _notes_needing_reminders(db: Session, now: datetime) -> list[tuple[Note, Use
             User.telegram_chat_id.is_not(None),
             ~already_handled,
         )
-        .order_by(Note.note_date, Note.id)
-        .limit(RECONCILE_LIMIT)
-        .all()
     )
+    if after is not None:
+        last_date, last_id = after
+        # Spelled out rather than as a row-value comparison: portable across both dialects.
+        query = query.filter(
+            or_(
+                Note.note_date > last_date,
+                and_(Note.note_date == last_date, Note.id > last_id),
+            )
+        )
+    return query.order_by(Note.note_date, Note.id).limit(RECONCILE_LIMIT).all()
 
 
 def _in_range(scheduled_for: datetime, now: datetime) -> bool:
     return now - BACKFILL_WINDOW <= scheduled_for <= now + MATERIALIZE_HORIZON
 
 
-def materialize_due(db: Session, now: datetime) -> int:
+def materialize_due(
+    db: Session, now: datetime, after: tuple[date, int] | None = None
+) -> tuple[int, tuple[date, int] | None]:
     """Create missing reminder rows and revive previously cancelled ones.
 
     Reviving matters because a cancelled row keeps occupying `(note_id, note_date)`: without it,
     moving a note's date away and back would mean the reminder never fires again.
 
-    Existing rows are fetched in one query and everything is committed once. Committing per note
-    would expire every loaded object (`expire_on_commit` is on by default), so each following
-    iteration would re-`SELECT` its note and user — measured at 79 queries for 20 notes.
+    Returns the number of rows touched and where to resume. A cursor comes back only when the pass
+    filled its quota; `None` means the window is exhausted and the next pass starts over.
+
+    Existing rows are fetched in one query, and the pass commits at most twice — once for revivals
+    and once for inserts, kept apart so a losing insert cannot roll back a revival that was never
+    in conflict. Committing per note instead would expire every loaded object (`expire_on_commit`
+    is on by default), and each following iteration would re-`SELECT` its note and user — measured
+    at 79 queries for 20 notes.
     """
-    candidates = _notes_needing_reminders(db, now)
+    candidates = _notes_needing_reminders(db, now, after)
     if not candidates:
-        return 0
+        return 0, None
+    exhausted = len(candidates) < RECONCILE_LIMIT
+    last_note = candidates[-1][0]
+    next_after = None if exhausted else (last_note.note_date, last_note.id)
 
     revivable = {
         (row.note_id, row.note_date): row
@@ -149,7 +193,7 @@ def materialize_due(db: Session, now: datetime) -> int:
     if revived:
         db.commit()
     if not fresh:
-        return revived
+        return revived, next_after
 
     db.add_all(fresh)
     try:
@@ -159,8 +203,8 @@ def materialize_due(db: Session, now: datetime) -> int:
         # service. The unique constraint is authoritative; the next pass picks the work up.
         db.rollback()
         logger.warning("materialisation lost a race on %s rows, retrying next pass", len(fresh))
-        return revived
-    return revived + len(fresh)
+        return revived, next_after
+    return revived + len(fresh), next_after
 
 
 def resync_pending(db: Session, now: datetime) -> int:
