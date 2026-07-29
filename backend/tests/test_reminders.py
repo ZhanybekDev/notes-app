@@ -468,7 +468,7 @@ class TestRenderMessage:
 
 
 class TestCandidateRange:
-    def test_window_covers_every_timezone_the_delivery_window_can_reach(self, db_session):
+    def test_window_covers_every_timezone_the_delivery_window_can_reach(self):
         """The SQL date filter must not drop a note whose instant lands inside the window.
 
         This is the invariant three consecutive rounds of edits kept drifting away from: the date

@@ -11,7 +11,7 @@ import logging
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -82,7 +82,15 @@ def _notes_needing_reminders(
     a user's timezone — so some candidates are rejected by `_in_range` on every pass and never
     produce a row. Sorted by date they cluster at the start, and with a fixed cap they would keep
     the pass from ever reaching notes that are genuinely due. Resuming past the last examined note
-    means a few passes sweep the whole window instead of re-reading the same dead prefix.
+    sweeps the whole window instead of re-reading the same dead prefix.
+
+    The cost of that is bounded and worth stating plainly: a full sweep takes
+    `ceil(candidates / RECONCILE_LIMIT)` passes, one per tick, so a reminder can be delivered up to
+    `ceil(candidates / RECONCILE_LIMIT) * TICK_INTERVAL_SECONDS` late. At the current 500 and 30s
+    that is half a minute for anything under 500 outstanding candidates and a minute per further
+    500. Should that ever become the binding constraint, the fix is not a bigger cap but pushing
+    `reminder_time` into the SQL predicate so rejected candidates stop being fetched at all — which
+    needs date arithmetic that differs between Postgres and SQLite, hence the sweep instead.
     """
     earliest, latest = _candidate_date_range(now)
     already_handled = (
@@ -108,14 +116,10 @@ def _notes_needing_reminders(
         )
     )
     if after is not None:
-        last_date, last_id = after
-        # Spelled out rather than as a row-value comparison: portable across both dialects.
-        query = query.filter(
-            or_(
-                Note.note_date > last_date,
-                and_(Note.note_date == last_date, Note.id > last_id),
-            )
-        )
+        # Row-value comparison rather than `a > x OR (a = x AND b > y)`: both dialects support it
+        # (SQLite since 3.15), and it matches `ix_notes_note_date_id` directly instead of leaving
+        # the planner to work an OR back into an index seek.
+        query = query.filter(tuple_(Note.note_date, Note.id) > tuple_(*after))
     return query.order_by(Note.note_date, Note.id).limit(RECONCILE_LIMIT).all()
 
 

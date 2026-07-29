@@ -49,13 +49,20 @@ class User(Base):
 
 class Note(Base):
     __tablename__ = "notes"
+    __table_args__ = (
+        # Composite rather than `note_date` alone: the reminder sweep scans a date range, orders
+        # by `(note_date, id)` and resumes from a cursor on the same pair, so one index serves the
+        # range, the sort and the seek. The leading column still covers every plain `note_date`
+        # filter the API does, which is why the single-column index it replaces is redundant.
+        Index("ix_notes_note_date_id", "note_date", "id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     content: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
-    note_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    note_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
