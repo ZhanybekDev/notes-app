@@ -47,14 +47,26 @@ docker compose logs worker --tail 5
 ## 3. Make a reminder fire
 
 The seed data includes a note titled **Reminder demo** dated today. Set the reminder time one
-minute into the future in Settings, and wait — the worker reconciles every 30 seconds.
+minute into the future in Settings, and wait.
 
 ```bash
 docker compose logs -f worker
-# ... INFO worker sent reminder 1 for note 9
 ```
 
-The message arrives in Telegram as plain text: the note title, its date, and an excerpt.
+A real run looks like this — the reconciliation pass picks the note up, then the next pass past the
+scheduled instant delivers it:
+
+```
+18:08:56  reconciled: materialised=1 cancelled=0 resynced=1
+18:10:36  sent reminder 4 for note 6
+```
+
+The message arrives in Telegram as plain text: the note title, its date, and an excerpt, in the
+language your Telegram client is set to.
+
+Expect up to about a minute of lag. Delivery is checked once per 30-second tick, and the tick waits
+behind a long poll that blocks for up to 25 seconds, so the worst case is roughly 55 seconds after
+the scheduled instant. In the run above it was 48.
 
 ## 4. Prove it is exactly-once
 
