@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { LangProvider, useLang } from './i18n.jsx';
+import { LangProvider, MESSAGES, useLang } from './i18n.jsx';
 
 function Probe() {
   const { lang, setLang, t } = useLang();
@@ -47,5 +47,36 @@ describe('i18n', () => {
     expect(screen.getByTestId('lang')).toHaveTextContent('ru');
     expect(screen.getByTestId('title')).toHaveTextContent('С возвращением');
     expect(localStorage.getItem('notes_lang')).toBe('ru');
+  });
+});
+
+describe('translation catalogue', () => {
+  const paths = (node, prefix = '') =>
+    Object.entries(node).flatMap(([key, value]) =>
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? paths(value, `${prefix}${key}.`)
+        : [`${prefix}${key}`]
+    );
+
+  it('has the same keys in every language', () => {
+    // The Definition of Done asks for every string in EN and RU, and nothing enforced it: a
+    // forgotten translation silently fell through to English at runtime.
+    const en = paths(MESSAGES.en);
+    const ru = paths(MESSAGES.ru);
+
+    expect(new Set(ru)).toEqual(new Set(en));
+  });
+
+  it('leaves no translation blank', () => {
+    const blank = Object.entries(MESSAGES).flatMap(([lang, catalogue]) =>
+      paths(catalogue)
+        .filter((key) => {
+          const value = key.split('.').reduce((node, part) => node[part], catalogue);
+          return typeof value === 'string' && !value.trim();
+        })
+        .map((key) => `${lang}.${key}`)
+    );
+
+    expect(blank).toEqual([]);
   });
 });

@@ -38,7 +38,7 @@ export default function Login() {
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </label>
           {error && <div className="error">{error}</div>}
-          <button type="submit">{t('auth.login')}</button>
+          <button type="submit" title={t('tips.login')}>{t('auth.login')}</button>
         </form>
         <p>{t('auth.noAccount')} <Link to="/register">{t('auth.createOne')}</Link></p>
       </div>

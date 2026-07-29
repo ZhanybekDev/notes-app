@@ -39,7 +39,7 @@ export default function Register() {
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
           </label>
           {error && <div className="error">{error}</div>}
-          <button type="submit">{t('auth.create')}</button>
+          <button type="submit" title={t('tips.register')}>{t('auth.create')}</button>
         </form>
         <p>{t('auth.haveAccount')} <Link to="/login">{t('auth.loginLink')}</Link></p>
       </div>

@@ -88,9 +88,9 @@ export default function Calendar() {
       <header className="cal-header">
         <h2>{monthName} {year}</h2>
         <div className="cal-nav">
-          <button onClick={prev} aria-label={t('calendar.prev')}>‹</button>
-          <button onClick={goToday}>{t('calendar.today')}</button>
-          <button onClick={next} aria-label={t('calendar.next')}>›</button>
+          <button onClick={prev} title={t('tips.calendarPrev')} aria-label={t('calendar.prev')}>‹</button>
+          <button onClick={goToday} title={t('tips.calendarToday')}>{t('calendar.today')}</button>
+          <button onClick={next} title={t('tips.calendarNext')} aria-label={t('calendar.next')}>›</button>
         </div>
       </header>
       {error && <div className="error" style={{ marginBottom: '1rem' }}>{error}</div>}

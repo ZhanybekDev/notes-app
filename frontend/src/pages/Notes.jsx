@@ -167,8 +167,8 @@ export default function Notes({ registerAction }) {
   const selectedCount = selectedIds.size;
 
   const viewTabs = useMemo(() => [
-    { id: 'active', label: t('notes.viewActive') },
-    { id: 'archived', label: t('notes.viewArchived') },
+    { id: 'active', label: t('notes.viewActive'), tip: 'tips.viewActive' },
+    { id: 'archived', label: t('notes.viewArchived'), tip: 'tips.viewArchived' },
   ], [t]);
 
   return (
@@ -180,6 +180,7 @@ export default function Notes({ registerAction }) {
               key={tab.id}
               className={`view-tab${view === tab.id ? ' active' : ''}`}
               onClick={() => { setView(tab.id); setSelected(null); setCreating(false); }}
+              title={t(tab.tip)}
             >
               {tab.label}
             </button>
@@ -190,6 +191,7 @@ export default function Notes({ registerAction }) {
             ref={searchRef}
             className="search"
             placeholder={t('notes.search')}
+            title={t('tips.search')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -197,6 +199,7 @@ export default function Notes({ registerAction }) {
             <button
               className="btn btn-primary"
               onClick={() => { setCreating(true); setSelected(null); }}
+              title={t('tips.newNote')}
             >
               {t('notes.new')}
             </button>
@@ -206,17 +209,21 @@ export default function Notes({ registerAction }) {
           <button
             className={`link-button ${bulkMode ? 'active' : ''}`}
             onClick={toggleBulk}
+            title={t(bulkMode ? 'tips.cancelSelect' : 'tips.selectMode')}
           >
             {bulkMode ? t('notes.cancelSelect') : t('notes.selectMode')}
           </button>
           {bulkMode && (
             <>
-              <button className="link-button" onClick={selectAll}>{t('notes.selectAll')}</button>
+              <button className="link-button" onClick={selectAll} title={t('tips.selectAll')}>
+                {t('notes.selectAll')}
+              </button>
               <div className="spacer" />
               <button
                 className="btn btn-danger"
                 onClick={bulkDelete}
                 disabled={selectedCount === 0}
+                title={t('tips.deleteSelected')}
               >
                 {t('notes.deleteSelected', { count: selectedCount })}
               </button>
@@ -233,7 +240,7 @@ export default function Notes({ registerAction }) {
           onToggleSelect={toggleSelect}
         />
         {hasMore && (
-          <button className="btn btn-ghost load-more" onClick={loadMore}>
+          <button className="btn btn-ghost load-more" onClick={loadMore} title={t('tips.loadMore')}>
             {t('notes.loadMore')} ({items.length} {t('notes.of')} {total})
           </button>
         )}

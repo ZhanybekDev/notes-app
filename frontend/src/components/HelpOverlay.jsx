@@ -20,7 +20,14 @@ export default function HelpOverlay({ open, onClose }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
           <h2>{t('shortcuts.title')}</h2>
-          <button className="btn btn-ghost" onClick={onClose} aria-label={t('shortcuts.close')}>✕</button>
+          <button
+            className="btn btn-ghost"
+            onClick={onClose}
+            title={t('tips.closeDialog')}
+            aria-label={t('tips.closeDialog')}
+          >
+            ✕
+          </button>
         </header>
         <ul className="shortcuts">
           {SHORTCUTS.map((s) => (

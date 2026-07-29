@@ -22,8 +22,8 @@ export default function ThemeToggle() {
       type="button"
       className="theme-toggle"
       onClick={cycle}
-      title={`${label} · click to change`}
-      aria-label={label}
+      title={t('tips.theme', { value: label })}
+      aria-label={t('tips.theme', { value: label })}
     >
       <span className="theme-icon">{ICON[pref]}</span>
       <span className="theme-label">{label}</span>

@@ -8,6 +8,7 @@ export default function TagFilter({ tags, active, onChange }) {
       <button
         className={`tag-chip${!active ? ' active' : ''}`}
         onClick={() => onChange(null)}
+        title={t('tips.tagAll')}
       >
         {t('notes.allTag')}
       </button>
@@ -16,6 +17,7 @@ export default function TagFilter({ tags, active, onChange }) {
           key={tag}
           className={`tag-chip${active === tag ? ' active' : ''}`}
           onClick={() => onChange(tag)}
+          title={t('tips.tagOne', { tag })}
         >
           #{tag}
         </button>

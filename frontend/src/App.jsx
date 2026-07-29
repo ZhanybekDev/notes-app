@@ -47,14 +47,21 @@ function Header({ onShowHelp }) {
   return (
     <nav className="nav">
       {brand}
-      <NavLink to="/notes" className={linkClass}>{t('nav.notes')}</NavLink>
-      <NavLink to="/calendar" className={linkClass}>{t('nav.calendar')}</NavLink>
-      <NavLink to="/settings" className={linkClass}>{t('nav.settings')}</NavLink>
+      <NavLink to="/notes" className={linkClass} title={t('tips.navNotes')}>{t('nav.notes')}</NavLink>
+      <NavLink to="/calendar" className={linkClass} title={t('tips.navCalendar')}>{t('nav.calendar')}</NavLink>
+      <NavLink to="/settings" className={linkClass} title={t('tips.navSettings')}>{t('nav.settings')}</NavLink>
       <div className="nav-spacer" />
-      <button className="link-button help-btn" onClick={onShowHelp} title="?" aria-label="Help">?</button>
+      <button
+        className="link-button help-btn"
+        onClick={onShowHelp}
+        title={t('tips.help')}
+        aria-label={t('tips.help')}
+      >
+        ?
+      </button>
       <LanguageToggle />
       <ThemeToggle />
-      <button className="link-button" onClick={logout}>{t('nav.logout')}</button>
+      <button className="link-button" onClick={logout} title={t('tips.logout')}>{t('nav.logout')}</button>
     </nav>
   );
 }

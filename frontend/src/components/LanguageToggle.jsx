@@ -15,8 +15,8 @@ export default function LanguageToggle() {
       type="button"
       className="lang-toggle"
       onClick={cycle}
-      title={`Language: ${t(`lang.label.${lang}`)} · click to change`}
-      aria-label={`Language: ${t(`lang.label.${lang}`)}, click to change`}
+      title={t('tips.language', { value: t(`lang.label.${lang}`) })}
+      aria-label={t('tips.language', { value: t(`lang.label.${lang}`) })}
     >
       <span className="theme-icon">{FLAGS[lang]}</span>
       <span className="lang-label">{t(`lang.label.${lang}`)}</span>

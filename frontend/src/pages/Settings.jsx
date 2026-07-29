@@ -179,7 +179,12 @@ export default function Settings() {
                       ? t('settings.telegramConnected', { username: prefs.telegram_username })
                       : t('settings.telegramConnectedNoUsername')}
                   </span>
-                  <button type="button" className="btn btn-ghost" onClick={disconnectTelegram}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={disconnectTelegram}
+                    title={t('tips.disconnectTelegram')}
+                  >
                     {t('settings.disconnectTelegram')}
                   </button>
                 </>
@@ -191,6 +196,7 @@ export default function Settings() {
                     className="btn btn-primary"
                     onClick={connectTelegram}
                     disabled={!prefs.bot_configured}
+                    title={t('tips.connectTelegram')}
                   >
                     {t('settings.connectTelegram')}
                   </button>
@@ -235,7 +241,9 @@ export default function Settings() {
           </label>
           {pwError && <div className="error">{pwError}</div>}
           {pwOk && <div className="success">{t('settings.passwordChanged')}</div>}
-          <button type="submit" className="btn btn-primary">{t('settings.submit')}</button>
+          <button type="submit" className="btn btn-primary" title={t('tips.changePassword')}>
+            {t('settings.submit')}
+          </button>
         </form>
       </section>
 
@@ -255,7 +263,9 @@ export default function Settings() {
             />
           </label>
           {deleteError && <div className="error">{deleteError}</div>}
-          <button type="submit" className="btn btn-danger">{t('settings.deleteAccount')}</button>
+          <button type="submit" className="btn btn-danger" title={t('tips.deleteAccount')}>
+            {t('settings.deleteAccount')}
+          </button>
         </form>
       </section>
     </div>

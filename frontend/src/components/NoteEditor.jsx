@@ -133,13 +133,25 @@ const NoteEditor = forwardRef(function NoteEditor(
         </div>
       </div>
       <div className="actions">
-        <button type="submit" className="btn btn-primary">{t('editor.save')}</button>
-        {onCancel && <button type="button" className="btn btn-ghost" onClick={onCancel}>{t('editor.cancel')}</button>}
+        <button type="submit" className="btn btn-primary" title={t('tips.save')}>
+          {t('editor.save')}
+        </button>
+        {onCancel && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={onCancel}
+            title={t('tips.cancel')}
+          >
+            {t('editor.cancel')}
+          </button>
+        )}
         <div className="spacer" />
         {note && onDelete && (
           <button
             type="button"
             className="btn btn-danger"
+            title={t('tips.deleteNote')}
             onClick={() => {
               if (window.confirm(t('editor.confirmDelete'))) onDelete(note.id);
             }}
