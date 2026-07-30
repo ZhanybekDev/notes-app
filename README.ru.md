@@ -17,7 +17,6 @@
 ```bash
 git clone https://github.com/ZhanybekDev/notes-app.git
 cd notes-app
-git checkout feat/telegram-note-reminders
 
 make up      # поднимает postgres + backend + worker + frontend
 make seed    # демо-пользователь и пять заметок
