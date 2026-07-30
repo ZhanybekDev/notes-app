@@ -1,17 +1,22 @@
 # Notes
 
+*Документация на русском: [README.ru.md](README.ru.md) — установка, бот и его команды, как работают
+напоминания, экспорт и публичные ссылки.*
+
 A personal Markdown notes app. Keep notes, tag them, search them, and pin some to a date so you can browse them on a calendar.
 
 Each user has their own private space. Every note is a Markdown document with a live preview while editing.
 
 ## What's inside
 
-- Log in / register (single-user-per-account — no sharing).
+- Log in / register. Notes are private; a note can be published as a read-only link.
 - CRUD for notes with Markdown preview.
 - Tags with filtering.
 - Full-text search across title and body.
 - Optional date on a note + a calendar view.
 - Telegram reminders when a note's date arrives.
+- Read-only share links for a single note, revocable.
+- Export: one note as markdown, or the account as a zip.
 
 ## Run it
 
