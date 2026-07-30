@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { applyTheme, initTheme } from './theme.js';
 import { usePrefsStore } from './stores/prefsStore.js';
@@ -25,9 +25,15 @@ function controllablePrefersDark(initial) {
     },
     media: query,
     addEventListener: (_event, callback) => listeners.push(callback),
-    removeEventListener: vi.fn(),
+    removeEventListener: (_event, callback) => {
+      const at = listeners.indexOf(callback);
+      if (at !== -1) listeners.splice(at, 1);
+    },
     addListener: (callback) => listeners.push(callback),
-    removeListener: vi.fn(),
+    removeListener: (callback) => {
+      const at = listeners.indexOf(callback);
+      if (at !== -1) listeners.splice(at, 1);
+    },
     dispatchEvent: vi.fn(),
   }));
   return (next) => {
@@ -81,9 +87,18 @@ describe('theme', () => {
 });
 
 describe('initTheme', () => {
+  let teardown = null;
+
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
+  });
+
+  // The app keeps both listeners for the life of the page; a test that leaves them behind stacks
+  // another subscription on a module-level store for every case that follows.
+  afterEach(() => {
+    teardown?.();
+    teardown = null;
   });
 
   it('applies the stored preference before anything changes', () => {
@@ -91,7 +106,7 @@ describe('initTheme', () => {
     usePrefsStore.setState({ theme: 'dark' });
     document.documentElement.removeAttribute('data-theme');
 
-    initTheme();
+    teardown = initTheme();
 
     // The whole point of the first call: subscribe() fires only on a change, so without it a
     // dark-theme user gets a light first frame.
@@ -100,7 +115,7 @@ describe('initTheme', () => {
 
   it('follows a later change through its subscription', () => {
     mockPrefersDark(false);
-    initTheme();
+    teardown = initTheme();
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
 
     usePrefsStore.getState().setTheme('dark');
@@ -109,7 +124,7 @@ describe('initTheme', () => {
 
   it('repaints when the OS flips and the preference is "system"', () => {
     const setPrefersDark = controllablePrefersDark(false);
-    initTheme();
+    teardown = initTheme();
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
 
     setPrefersDark(true);
@@ -119,8 +134,25 @@ describe('initTheme', () => {
   it('ignores the OS while an explicit preference is in force', () => {
     const setPrefersDark = controllablePrefersDark(false);
     usePrefsStore.setState({ theme: 'light' });
-    initTheme();
+    teardown = initTheme();
 
+    setPrefersDark(true);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+});
+
+describe('initTheme teardown', () => {
+  it('stops following the store and the OS once torn down', () => {
+    const setPrefersDark = controllablePrefersDark(false);
+    const stop = initTheme();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+    stop();
+
+    usePrefsStore.getState().setTheme('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+    usePrefsStore.setState({ theme: 'system' });
     setPrefersDark(true);
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });

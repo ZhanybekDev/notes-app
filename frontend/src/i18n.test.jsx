@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -71,20 +71,37 @@ describe('translation catalogue', () => {
 });
 
 describe('initLang', () => {
+  let teardown = null;
+
+  // Same reason as initTheme's teardown: the subscription outlives the test otherwise, and they
+  // accumulate on a module-level store.
+  afterEach(() => {
+    teardown?.();
+    teardown = null;
+  });
+
   it('sets <html lang> before anything changes', () => {
     usePrefsStore.setState({ lang: 'ru' });
     document.documentElement.removeAttribute('lang');
 
-    initLang();
+    teardown = initLang();
 
     expect(document.documentElement.getAttribute('lang')).toBe('ru');
   });
 
   it('follows a later switch', () => {
-    initLang();
+    teardown = initLang();
     expect(document.documentElement.getAttribute('lang')).toBe('en');
 
     usePrefsStore.getState().setLang('ru');
     expect(document.documentElement.getAttribute('lang')).toBe('ru');
+  });
+
+  it('stops following once torn down', () => {
+    const stop = initLang();
+    stop();
+
+    usePrefsStore.getState().setLang('ru');
+    expect(document.documentElement.getAttribute('lang')).toBe('en');
   });
 });

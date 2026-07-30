@@ -121,4 +121,17 @@ describe('Notes page on the store', () => {
     renderNotes();
     expect(await screen.findByText('offline')).toBeInTheDocument();
   });
+
+  it('does not carry a stale error into the next visit', async () => {
+    list.mockRejectedValueOnce(new Error('offline'));
+    const { unmount } = renderNotes();
+    expect(await screen.findByText('offline')).toBeInTheDocument();
+    unmount();
+
+    // The error used to be page state and died with the page; in a store it would otherwise sit
+    // above a freshly loaded list until the tab was reloaded.
+    renderNotes();
+    await screen.findByText('Groceries');
+    expect(screen.queryByText('offline')).not.toBeInTheDocument();
+  });
 });

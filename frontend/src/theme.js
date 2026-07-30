@@ -17,11 +17,14 @@ export function applyTheme(theme) {
  * The first call is not decoration: `subscribe` fires only on a change, and this runs before
  * `createRoot().render()` deliberately. Without it the first frame would be light for everyone who
  * chose dark, and the theme would appear only after the next toggle.
+ *
+ * Returns a teardown. The app never calls it — both listeners live as long as the page — but tests
+ * do, so repeated calls stop piling up subscriptions on a module-level store.
  */
 export function initTheme() {
   applyTheme(usePrefsStore.getState().theme);
 
-  usePrefsStore.subscribe((state, previous) => {
+  const unsubscribe = usePrefsStore.subscribe((state, previous) => {
     if (state.theme !== previous.theme) applyTheme(state.theme);
   });
 
@@ -31,4 +34,10 @@ export function initTheme() {
   };
   if (mql.addEventListener) mql.addEventListener('change', onChange);
   else mql.addListener(onChange);
+
+  return () => {
+    unsubscribe();
+    if (mql.removeEventListener) mql.removeEventListener('change', onChange);
+    else mql.removeListener(onChange);
+  };
 }
