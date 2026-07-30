@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 're
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import BusyButton from './BusyButton.jsx';
+import ShareControl from './ShareControl.jsx';
 import MarkdownToolbar from './MarkdownToolbar.jsx';
 import { useLang } from '../i18n.jsx';
 import {
@@ -95,6 +96,7 @@ const NoteEditor = forwardRef(function NoteEditor(
         />
         {isPersisted && (
           <div className="editor-flags">
+            {note && <ShareControl noteId={note.id} token={note.share_token} />}
             <button
               type="button"
               className={`flag-btn ${isPinned ? 'on' : ''}`}

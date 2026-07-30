@@ -39,6 +39,34 @@ class NoteOut(BaseModel):
     pinned_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # The owner's own view of the note has to say whether a link is live, or the editor would offer
+    # to share something that is already shared. This is the private model; the public one is below
+    # and shares no fields by inheritance on purpose.
+    share_token: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShareOut(BaseModel):
+    """What the owner gets back after sharing: the token, and nothing about the reader."""
+
+    share_token: str
+    shared_at: datetime
+
+
+class PublicNoteOut(BaseModel):
+    """What anyone holding the link can see.
+
+    Deliberately not `NoteOut`. Reusing it would publish `archived_at`, `pinned_at` and both
+    timestamps today, and — the part that matters — would publish whatever field somebody adds to
+    `NoteOut` next, silently. A separate model makes every future addition a decision. The owner's
+    identity appears nowhere: a link says what the note is, not who wrote it.
+    """
+
+    title: str
+    content: str
+    tags: list[str]
+    note_date: date | None
+    updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 

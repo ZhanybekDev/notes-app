@@ -591,3 +591,65 @@
 
 .telegram-status .settings-hint { margin: 0; }
 
+
+/* ============================== Shared note (public) ============================== */
+.shared-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+  width: 100%;
+}
+
+.shared-note {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+
+.shared-badge {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.shared-note h1 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+}
+
+.shared-meta {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: var(--space-5);
+}
+
+.shared-empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+}
+
+.shared-empty h1 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+}
+
+.shared-empty .btn { margin-top: var(--space-4); }
+
+.share-live {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.share-badge {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--success);
+}

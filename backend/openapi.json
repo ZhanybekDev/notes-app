@@ -321,6 +321,17 @@
             ],
             "title": "Pinned At"
           },
+          "share_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Token"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -392,6 +403,72 @@
           }
         },
         "title": "OkOut",
+        "type": "object"
+      },
+      "PublicNoteOut": {
+        "description": "What anyone holding the link can see.\n\nDeliberately not `NoteOut`. Reusing it would publish `archived_at`, `pinned_at` and both\ntimestamps today, and \u2014 the part that matters \u2014 would publish whatever field somebody adds to\n`NoteOut` next, silently. A separate model makes every future addition a decision. The owner's\nidentity appears nowhere: a link says what the note is, not who wrote it.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "note_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note Date"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "content",
+          "tags",
+          "note_date",
+          "updated_at"
+        ],
+        "title": "PublicNoteOut",
+        "type": "object"
+      },
+      "ShareOut": {
+        "description": "What the owner gets back after sharing: the token, and nothing about the reader.",
+        "properties": {
+          "share_token": {
+            "title": "Share Token",
+            "type": "string"
+          },
+          "shared_at": {
+            "format": "date-time",
+            "title": "Shared At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "share_token",
+          "shared_at"
+        ],
+        "title": "ShareOut",
         "type": "object"
       },
       "TelegramLinkOut": {
@@ -1323,6 +1400,93 @@
         ]
       }
     },
+    "/api/notes/{note_id}/share": {
+      "delete": {
+        "description": "Revoke the link for good. Sharing again mints a new token rather than reviving this one.",
+        "operationId": "unshare_note_api_notes__note_id__share_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Unshare Note",
+        "tags": [
+          "notes"
+        ]
+      },
+      "post": {
+        "description": "Publish a read-only link, or return the one this note already has.\n\nIdempotent on purpose: pressing Share twice must not mint a second token and silently break\nthe link that was already copied into a chat.",
+        "operationId": "share_note_api_notes__note_id__share_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Share Note",
+        "tags": [
+          "notes"
+        ]
+      }
+    },
     "/api/notes/{note_id}/unarchive": {
       "post": {
         "operationId": "unarchive_note_api_notes__note_id__unarchive_post",
@@ -1414,6 +1578,49 @@
         "summary": "Unpin Note",
         "tags": [
           "notes"
+        ]
+      }
+    },
+    "/api/public/notes/{token}": {
+      "get": {
+        "description": "Resolve a share token.\n\nEvery rejection is the same 404 with the same body: a revoked link, a token that never existed\nand an archived note must be indistinguishable, or the difference itself answers questions\nabout notes the reader has no business asking about.\n\nArchived notes stop resolving. Archiving is how this app expresses \"put away\", and a link that\nkept working afterwards would be a copy of the note that outlives the decision to hide it.",
+        "operationId": "read_shared_note_api_public_notes__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicNoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Shared Note",
+        "tags": [
+          "public"
         ]
       }
     },

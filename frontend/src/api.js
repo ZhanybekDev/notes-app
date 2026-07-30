@@ -45,6 +45,23 @@ function buildQuery(params) {
   return qs.toString() ? `?${qs}` : '';
 }
 
+/**
+ * A request that carries no session and must not end one.
+ *
+ * The shared-note page is opened by people who may have no account here at all, and by owners who
+ * do. `request()` above ends the session on any 401, which for a public link would mean a revoked
+ * link signs out whoever opened it. This path sends no token and treats every failure as a failure
+ * of that one page.
+ */
+async function publicRequest(path) {
+  const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new ApiError(detail.detail || res.statusText, res.status);
+  }
+  return res.json();
+}
+
 export const api = {
   register: (username, password) =>
     request('/auth/register', { method: 'POST', body: { username, password } }),
@@ -65,6 +82,10 @@ export const api = {
 
   calendar: (year, month) => request(`/notes/calendar?year=${year}&month=${month}`),
   tags: () => request('/tags'),
+
+  shareNote: (id) => request(`/notes/${id}/share`, { method: 'POST' }),
+  unshareNote: (id) => request(`/notes/${id}/share`, { method: 'DELETE' }),
+  publicNote: (token) => publicRequest(`/public/notes/${encodeURIComponent(token)}`),
 
   getSettings: () => request('/account/settings'),
   updateSettings: (patch) => request('/account/settings', { method: 'PATCH', body: patch }),

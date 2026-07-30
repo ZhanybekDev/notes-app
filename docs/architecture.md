@@ -100,6 +100,13 @@ graph TD
 
 - **`main.jsx`** — app bootstrap: calls `initTheme()` and `initLang()` before the first render, then mounts `BrowserRouter`. Both run early on purpose: a subscription alone fires only on change, which would paint the first frame light for a dark-theme user and leave `<html lang>` briefly wrong.
 - **`App.jsx`** — route map, top-level header, global shortcut wiring, registers actions forwarded from `Notes.jsx` (new/search/save) so shortcuts can reach them.
+- **`routers/public.py`** — the one unauthenticated read surface: `GET /api/public/notes/{token}`
+  resolves a share link. Its own module rather than a branch inside `notes.py`, because everything in
+  that file sits behind `get_current_user` and a reader is entitled to assume so. Every rejection is
+  the same 404 with the same body — a revoked link, an archived note and a token that never existed
+  must be indistinguishable — and the response carries `X-Robots-Tag: noindex` and `Cache-Control:
+  no-store`. `PublicNoteOut` is a separate model from `NoteOut` on purpose: reusing the private one
+  would publish whatever field somebody adds to it next, silently.
 - **`api.js`** — the single network seam. Centralizes the `Authorization` header (token read from `stores/sessionStore`), the 401 that ends a session, and the JSON envelope. No page talks to `fetch` directly.
 - **`stores/safeStorage.js`** — the only module that touches `localStorage` directly, and the
   successor to the boundary `auth.js` used to hold. Read, write and remove never throw: a browser

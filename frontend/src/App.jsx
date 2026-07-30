@@ -5,6 +5,7 @@ import Register from './pages/Register.jsx';
 import Notes from './pages/Notes.jsx';
 import Calendar from './pages/Calendar.jsx';
 import Settings from './pages/Settings.jsx';
+import SharedNote from './pages/SharedNote.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import LanguageToggle from './components/LanguageToggle.jsx';
 import HelpOverlay from './components/HelpOverlay.jsx';
@@ -105,6 +106,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          {/* No RequireAuth: a share link is opened by people who have no account here. */}
+          <Route path="/s/:token" element={<SharedNote />} />
           <Route path="/notes" element={<RequireAuth><Notes registerAction={setPendingAction} /></RequireAuth>} />
           <Route path="/calendar" element={<RequireAuth><Calendar /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />

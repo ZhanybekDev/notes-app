@@ -1,3 +1,4 @@
+import secrets
 from calendar import monthrange
 from datetime import UTC, date, datetime
 
@@ -13,7 +14,12 @@ from ..schemas import (
     NoteIn,
     NoteOut,
     NotesPage,
+    ShareOut,
 )
+
+# 32 bytes of urlsafe randomness, 43 characters. Long enough that guessing one is not a strategy,
+# which is what lets the public read be a plain GET with no other secret in it.
+SHARE_TOKEN_BYTES = 32
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -246,3 +252,36 @@ def unpin_note(
         db.commit()
         db.refresh(note)
     return note
+
+
+@router.post("/{note_id}/share", response_model=ShareOut)
+def share_note(
+    note_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Note:
+    """Publish a read-only link, or return the one this note already has.
+
+    Idempotent on purpose: pressing Share twice must not mint a second token and silently break
+    the link that was already copied into a chat.
+    """
+    note = _own_note_or_404(note_id, user, db)
+    if note.share_token is None:
+        note.share_token = secrets.token_urlsafe(SHARE_TOKEN_BYTES)
+        note.shared_at = _now()
+        db.commit()
+        db.refresh(note)
+    return note
+
+
+@router.delete("/{note_id}/share", status_code=status.HTTP_204_NO_CONTENT)
+def unshare_note(
+    note_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Revoke the link for good. Sharing again mints a new token rather than reviving this one."""
+    note = _own_note_or_404(note_id, user, db)
+    note.share_token = None
+    note.shared_at = None
+    db.commit()
