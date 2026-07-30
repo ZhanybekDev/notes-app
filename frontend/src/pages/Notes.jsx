@@ -154,6 +154,8 @@ export default function Notes({ registerAction }) {
           bulkMode={bulkMode}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
+          filtered={Boolean(search || activeTag)}
+          archivedView={view === 'archived'}
         />
         {hasMore && (
           <button className="btn btn-ghost load-more" onClick={loadMore} title={t('tips.loadMore')}>
@@ -162,7 +164,7 @@ export default function Notes({ registerAction }) {
         )}
       </aside>
       <section className="content-pane">
-        {error && <div className="error" style={{ marginBottom: '0.75rem' }}>{error}</div>}
+        {error && <div className="error content-error">{error}</div>}
         {showEditor ? (
           <NoteEditor
             ref={editorRef}

@@ -46,7 +46,28 @@ describe('Notes page on the store', () => {
 
   it('shows the empty state until a note is picked', async () => {
     renderNotes();
-    expect(await screen.findByText('Nothing selected')).toBeInTheDocument();
+    expect(await screen.findByText('Pick a note')).toBeInTheDocument();
+  });
+
+  it('tells an empty account apart from a search that found nothing', async () => {
+    list.mockResolvedValue({ items: [], total: 0 });
+    renderNotes();
+    expect(await screen.findByText('No notes yet')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByPlaceholderText('Search notes...'), 'zzz');
+
+    // Same empty array from the server, different reason for it — the copy has to say which.
+    expect(await screen.findByText('Nothing found')).toBeInTheDocument();
+    expect(screen.queryByText('No notes yet')).not.toBeInTheDocument();
+  });
+
+  it('names an empty archive as such rather than as an account with no notes', async () => {
+    list.mockResolvedValue({ items: [], total: 0 });
+    renderNotes();
+    await screen.findByText('No notes yet');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    expect(await screen.findByText('The archive is empty.')).toBeInTheDocument();
   });
 
   it('opens the editor on the picked note', async () => {

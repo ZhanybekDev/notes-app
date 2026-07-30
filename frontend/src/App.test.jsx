@@ -42,14 +42,14 @@ describe('App routing follows the session store', () => {
   it('lets a signed-in visitor reach the notes', async () => {
     useSessionStore.getState().login(JWT);
     renderApp('/notes');
-    expect(await screen.findByText('Nothing selected')).toBeInTheDocument();
+    expect(await screen.findByText('Pick a note')).toBeInTheDocument();
     expect(screen.queryByText('Welcome back')).not.toBeInTheDocument();
   });
 
   it('returns to the login form when the session ends', async () => {
     useSessionStore.getState().login(JWT);
     renderApp('/notes');
-    await screen.findByText('Nothing selected');
+    await screen.findByText('Pick a note');
 
     await userEvent.click(screen.getByRole('button', { name: 'Log out' }));
     expect(await screen.findByText('Welcome back')).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe('App routing follows the session store', () => {
   it('reacts to a session dropped elsewhere without a reload', async () => {
     useSessionStore.getState().login(JWT);
     renderApp('/notes');
-    await screen.findByText('Nothing selected');
+    await screen.findByText('Pick a note');
 
     // What another tab signing out looks like from here.
     useSessionStore.getState().logout();

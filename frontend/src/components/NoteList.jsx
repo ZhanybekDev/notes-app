@@ -7,12 +7,28 @@ export default function NoteList({
   bulkMode = false,
   selectedIds = new Set(),
   onToggleSelect,
+  filtered = false,
+  archivedView = false,
 }) {
   const { t } = useLang();
   if (!notes.length) {
+    // Three ways to have nothing to show, and the user needs to know which one:
+    // a query that matched nothing, an empty archive, and an account with no notes.
     return (
-      <div className="empty-state" style={{ padding: '1.5rem' }}>
-        <p style={{ fontSize: '0.9rem', margin: 0 }}>{t('notes.noMatch')}</p>
+      <div className="list-empty">
+        {filtered ? (
+          <>
+            <p className="list-empty-title">{t('notes.noMatchTitle')}</p>
+            <p className="list-empty-hint">{t('notes.noMatchHint')}</p>
+          </>
+        ) : archivedView ? (
+          <p className="list-empty-title">{t('notes.emptyArchive')}</p>
+        ) : (
+          <>
+            <p className="list-empty-title">{t('notes.emptyTitle')}</p>
+            <p className="list-empty-hint">{t('notes.emptyHint')}</p>
+          </>
+        )}
       </div>
     );
   }
