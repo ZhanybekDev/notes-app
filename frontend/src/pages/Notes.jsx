@@ -22,6 +22,7 @@ export default function Notes({ registerAction }) {
   const bulkMode = useNotesStore((s) => s.bulkMode);
   const selectedIds = useNotesStore((s) => s.selectedIds);
   const status = useNotesStore((s) => s.status);
+  const loaded = useNotesStore((s) => s.loaded);
 
   const load = useNotesStore((s) => s.load);
   const loadMore = useNotesStore((s) => s.loadMore);
@@ -49,7 +50,7 @@ export default function Notes({ registerAction }) {
 
   // Failures reach the reader as a toast; what stays on screen is the list's own state.
   const failed = status === 'error';
-  const pending = status === 'idle' || status === 'loading';
+  const pending = !loaded;
   const showSkeleton = useDelayedFlag(status === 'loading');
   const retry = useCallback(() => load(0, false), [load]);
 

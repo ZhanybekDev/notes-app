@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import LoadFailure from '../components/LoadFailure.jsx';
 import { useLang } from '../i18n.jsx';
@@ -41,6 +41,10 @@ export default function Calendar() {
   // The opened day has its own lifecycle: its notes are fetched one by one, and that can fail while
   // the month around it loaded fine.
   const [dayStatus, setDayStatus] = useState('ready'); // ready | loading | error
+  // Which day the reader is looking at right now. A day holds several notes, fetched one request per
+  // note, so opening two days in a row leaves two flights racing — and without this the slower one
+  // wins and files its notes under the other day's heading.
+  const openRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -64,6 +68,7 @@ export default function Calendar() {
 
   const openDay = async (date) => {
     setSelectedDate(date);
+    openRef.current = date;
     setDayStatus('ready');
     const day = days.find((d) => d.date === date);
     if (!day) {
@@ -76,9 +81,11 @@ export default function Calendar() {
     setDayStatus('loading');
     try {
       const fetched = await Promise.all(day.note_ids.map((id) => api.getNote(id)));
+      if (openRef.current !== date) return;
       setNotesForDay(fetched);
       setDayStatus('ready');
     } catch (err) {
+      if (openRef.current !== date) return;
       setDayStatus('error');
       reportFailure(err);
     }

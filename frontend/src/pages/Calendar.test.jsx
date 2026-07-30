@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -145,6 +145,52 @@ describe('Calendar page', () => {
     expect(screen.queryByText('No notes on this day.')).not.toBeInTheDocument();
     answer({ id: 3, title: 'Roadmap', content: 'q3' });
     expect(await screen.findByText('Roadmap')).toBeInTheDocument();
+  });
+
+  it('ignores a slow day answer once another day is open', async () => {
+    const answers = new Map();
+    vi.spyOn(api, 'getNote').mockImplementation(
+      (id) => new Promise((resolve) => answers.set(id, resolve)),
+    );
+    renderCalendar();
+    await screen.findByRole('heading', { name: 'August 2026' });
+
+    // The 3rd holds two notes, the 12th one. Open the slow day, then the fast one.
+    await userEvent.click(document.querySelectorAll('.cal-cell:not(.empty)')[2]);
+    await userEvent.click(document.querySelector('.cal-cell.today'));
+
+    await act(async () => { answers.get(3)({ id: 3, title: 'Roadmap', content: '' }); });
+    expect(await screen.findByText('Roadmap')).toBeInTheDocument();
+
+    await act(async () => {
+      answers.get(1)({ id: 1, title: 'Groceries', content: '' });
+      answers.get(2)({ id: 2, title: 'Invoices', content: '' });
+    });
+
+    // The 3rd answered last; its notes belong to a heading that is no longer on screen.
+    expect(screen.getByText('Roadmap')).toBeInTheDocument();
+    expect(screen.queryByText('Groceries')).not.toBeInTheDocument();
+    expect(screen.queryByText('Invoices')).not.toBeInTheDocument();
+  });
+
+  it('keeps a failed day from being reported by a day nobody is looking at', async () => {
+    const getNote = vi.spyOn(api, 'getNote');
+    let reject;
+    getNote.mockImplementationOnce(() => new Promise((_, r) => { reject = r; }));
+    getNote.mockImplementationOnce(() => new Promise(() => {}));
+    renderCalendar();
+    await screen.findByRole('heading', { name: 'August 2026' });
+
+    await userEvent.click(document.querySelectorAll('.cal-cell:not(.empty)')[2]);
+    getNote.mockResolvedValue({ id: 3, title: 'Roadmap', content: '' });
+    await userEvent.click(document.querySelector('.cal-cell.today'));
+    await screen.findByText('Roadmap');
+
+    await act(async () => { reject(new Error('offline')); });
+
+    // The failure belongs to a day the reader left; it must not replace what they are reading now.
+    expect(screen.getByText('Roadmap')).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load")).not.toBeInTheDocument();
   });
 
   it('replaces the grid with a retry when the month fails to load', async () => {

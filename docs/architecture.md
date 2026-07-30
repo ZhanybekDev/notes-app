@@ -297,8 +297,10 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
   feedback; a toast would put an untranslated "Unauthorized" alert on that form. A background failure therefore
   appears twice on purpose, as an event (the toast, which leaves) and as a state (`components/LoadFailure`
   in the list, the calendar grid or one opened day, which stays, with a retry). Empty states are
-  claims about the server's answer, so they render only once an answer exists: while a request is in
-  flight and there is nothing yet, the area stays blank rather than announcing an empty account. Form errors stay next to their field: a
+  claims about the server's answer, so they render only once an answer exists: while the first request
+  is in flight the area stays blank rather than announcing an empty account. "No answer yet" is tracked
+  by `notesStore.loaded`, not by the length of the list — an empty result is an answer too, and keying
+  it on the list made "Nothing found" blink on every keystroke. Form errors stay next to their field: a
   toast about a wrong password would expire while it was being read. What stays in `useState`: form
   drafts, the calendar's visible month, the timer that dismisses the "saved" notice — state nobody
   else needs, plus one timer that must not outlive its screen.

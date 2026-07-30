@@ -14,6 +14,10 @@ const initialState = {
   activeTag: null,
   view: 'active',
   status: 'idle', // idle | loading | ready | error
+  // Whether any request has ever settled. Not derivable from `items`: an empty list is both what a
+  // fresh store looks like and what a query matching nothing looks like, and the screen has to say
+  // different things about the two.
+  loaded: false,
   offset: 0,
   bulkMode: false,
   selectedIds: new Set(),
@@ -59,9 +63,10 @@ export const useNotesStore = create((set, get) => ({
   load: async (nextOffset = 0, append = false) => {
     const { search, activeTag, view } = get();
     const ticket = ++latestRequest;
-    // An already-loaded list stays on screen while it refreshes, the way the account store does it:
-    // blanking it out on every keystroke would be worse than a slightly stale list.
-    set({ status: get().items.length ? 'ready' : 'loading' });
+    // Whatever the last answer was — a list or an empty result — it stays on screen while the next
+    // one is fetched. Keyed on `loaded` rather than on `items.length`, because an empty result is an
+    // answer too: keying it on the list made "Nothing found" blink on every keystroke.
+    set({ status: get().loaded ? 'ready' : 'loading' });
     try {
       const [page, tags] = await Promise.all([
         api.listNotes({
@@ -76,6 +81,7 @@ export const useNotesStore = create((set, get) => ({
       if (ticket !== latestRequest) return;
       set((prev) => ({
         status: 'ready',
+        loaded: true,
         total: page.total,
         items: append ? [...prev.items, ...page.items] : page.items,
         tags,

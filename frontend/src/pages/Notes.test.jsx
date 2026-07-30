@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -66,6 +66,25 @@ describe('Notes page on the store', () => {
 
     answer({ items: [], total: 0 });
     expect(await screen.findByText('No notes yet')).toBeInTheDocument();
+  });
+
+  it('keeps an empty result on screen while the next query is in flight', async () => {
+    list.mockResolvedValue({ items: [], total: 0 });
+    renderNotes();
+    await screen.findByText('No notes yet');
+
+    await userEvent.type(screen.getByPlaceholderText('Search notes...'), 'z');
+    await screen.findByText('Nothing found');
+
+    let answer;
+    list.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    await userEvent.type(screen.getByPlaceholderText('Search notes...'), 'z');
+
+    // An empty result is an answer, and it stays until a newer one arrives. Deciding that from the
+    // length of the list instead made this message blink on every keystroke.
+    expect(screen.getByText('Nothing found')).toBeInTheDocument();
+    await act(async () => { answer({ items: [], total: 0 }); });
+    expect(screen.getByText('Nothing found')).toBeInTheDocument();
   });
 
   it('tells an empty account apart from a search that found nothing', async () => {
