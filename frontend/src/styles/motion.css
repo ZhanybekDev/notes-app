@@ -1,0 +1,17 @@
+/*
+ * Imported last, and with !important — both are needed for different reasons.
+ *
+ * Later position wins only at equal specificity, and rules like `.toast.error` are more specific than
+ * a universal selector, so order alone would lose. For the people who set this preference it is a
+ * medical setting, not a taste one: a notes app has no business overriding it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

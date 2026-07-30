@@ -1,0 +1,116 @@
+/*
+ * Design tokens: primitives and the semantic names built on them.
+ *
+ * The dark theme redeclares these names and owns no rules of its own, so it cannot drift away from
+ * the light one. Every value the rest of the stylesheet uses comes from here — a literal in a rule is
+ * a bug, not a shortcut.
+ */
+:root {
+  /* Spacing — 4px base. Nothing between the steps, so rhythm cannot drift. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Type scale, weights, line heights */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 30px;
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --leading-tight: 1.25;
+  --leading-normal: 1.55;
+
+  /* Surfaces: flat, cool-tinted, stepped. No page gradient. */
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f2f3f7;
+  --surface-hover: #eceef4;
+  --text: #14161f;
+  --text-muted: #5f6577;
+  --text-subtle: #8b91a3;
+  --border: #e3e5eb;
+  --border-strong: #cfd2db;
+
+  /* One accent, used at points: primary action, selection, focus. */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0fe;
+  --accent-ring: rgba(79, 70, 229, 0.35);
+
+  --danger: #d33a3a;
+  --danger-soft: #fdecec;
+  --warning: #d97706;
+  --warning-fg: #92400e;
+  --warning-soft: #fdf3e3;
+  --success: #0f9d76;
+
+  /* Borders separate; the single shadow is for things that float above the page. */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+  --shadow-overlay: 0 16px 48px rgba(20, 22, 31, 0.18);
+  --backdrop: rgba(20, 22, 31, 0.35);
+
+  --focus-ring: 0 0 0 3px var(--accent-ring);
+
+  --nav-bg: var(--surface);
+  --preview-bg: var(--surface-2);
+  --code-bg: #14161f;
+  --code-fg: #e7e9f0;
+  --has-notes-bg: var(--accent-soft);
+  --has-notes-bg-hover: #e2e5fd;
+  --date-pill-bg: var(--surface-2);
+  --date-pill-fg: var(--text-muted);
+  --search-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235f6577' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --header-h: 56px;
+  --duration: 140ms;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0f1117;
+  --surface: #16181f;
+  --surface-2: #1c1f28;
+  --surface-hover: #232734;
+  --text: #e7e9f0;
+  --text-muted: #a0a6b8;
+  --text-subtle: #6b7181;
+  --border: #262a35;
+  --border-strong: #353a48;
+
+  --accent: #8b85ff;
+  --accent-hover: #a29cff;
+  --accent-soft: rgba(139, 133, 255, 0.14);
+  --accent-ring: rgba(139, 133, 255, 0.4);
+
+  --danger: #f26d6d;
+  --danger-soft: rgba(242, 109, 109, 0.13);
+  --warning: #e5a53d;
+  --warning-fg: #f0c274;
+  --warning-soft: rgba(229, 165, 61, 0.13);
+  --success: #34c793;
+
+  --shadow-overlay: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --backdrop: rgba(0, 0, 0, 0.6);
+
+  --code-bg: #0b0d13;
+  --has-notes-bg-hover: rgba(139, 133, 255, 0.22);
+  --search-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23a0a6b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+
+  color-scheme: dark;
+}
