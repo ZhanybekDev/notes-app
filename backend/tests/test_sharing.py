@@ -154,3 +154,23 @@ def test_public_reads_are_throttled_per_client(client):
 
     # Enumeration is what this bounds; a person reading their link never reaches 60 in a minute.
     assert 429 in codes
+
+
+def test_the_public_limiter_forgets_addresses_that_went_quiet():
+    from app.rate_limit import _PUBLIC_WINDOW_SECONDS, _public_hits, check_public_rate_limit
+
+    class _Request:
+        def __init__(self, host):
+            self.client = type("C", (), {"host": host})()
+
+    check_public_rate_limit(_Request("10.0.0.1"))
+    assert "10.0.0.1" in _public_hits
+
+    # Age the entry out by hand rather than sleeping a minute.
+    _public_hits["10.0.0.1"][0] -= _PUBLIC_WINDOW_SECONDS + 1
+    check_public_rate_limit(_Request("10.0.0.2"))
+    check_public_rate_limit(_Request("10.0.0.1"))
+
+    # Two live addresses, not a growing list of every address that ever called.
+    assert set(_public_hits) == {"10.0.0.1", "10.0.0.2"}
+    assert len(_public_hits["10.0.0.1"]) == 1

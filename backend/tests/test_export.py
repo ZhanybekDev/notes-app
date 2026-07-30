@@ -57,6 +57,20 @@ def test_two_notes_with_one_title_both_carry_their_id():
     assert names[3] == "Other.md"
 
 
+def test_a_title_cannot_steal_another_notes_disambiguated_name():
+    # "Meeting-1" is exactly what two notes called "Meeting" turn the first one into. Two entries
+    # under one name is not an error anywhere: zipfile writes both, extraction keeps the last, and
+    # the export quietly loses a note.
+    names = filenames_for(
+        [_FakeNote(1, "Meeting"), _FakeNote(2, "Meeting-1"), _FakeNote(3, "Meeting")]
+    )
+
+    assert len(set(names.values())) == 3
+    assert names[1] == "Meeting-1.md"
+    assert names[2] == "Meeting-1-2.md"
+    assert names[3] == "Meeting-3.md"
+
+
 def test_untitled_notes_do_not_collide():
     names = filenames_for([_FakeNote(1, ""), _FakeNote(2, "   ")])
     assert names[1] != names[2]

@@ -61,6 +61,12 @@ def check_public_rate_limit(request: Request) -> None:
     now = monotonic()
     while hits and now - hits[0] > _PUBLIC_WINDOW_SECONDS:
         hits.popleft()
+    # An address that has gone quiet leaves nothing behind. Without this the dictionary keeps one
+    # entry per address that ever called, forever, and the endpoint feeding it is the only one in
+    # the app that needs no credentials — so anyone could grow it from anywhere.
+    if not hits:
+        del _public_hits[client_host]
+        hits = _public_hits[client_host]
     if len(hits) >= _PUBLIC_MAX_REQUESTS:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

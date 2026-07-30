@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { api } from '../api.js';
-import { reportFailure } from './uiStore.js';
+import { translate } from '../messages.js';
+import { selectLang, usePrefsStore } from './prefsStore.js';
+import { reportFailure, useUiStore } from './uiStore.js';
 
 export const PAGE_SIZE = 20;
 
@@ -207,6 +209,50 @@ export const useNotesStore = create((set, get) => ({
       await api.bulkDelete(ids);
       set({ selectedIds: new Set(), bulkMode: false, selected: null });
       await get().load(0, false);
+    } catch (err) {
+      set({ error: err.message });
+      reportFailure(err);
+    } finally {
+      set({ busy: null });
+    }
+  },
+
+  /**
+   * Publish a read-only link for the open note, or hand back the one it already has.
+   *
+   * Here rather than in the component that renders the button: `docs/architecture.md` keeps
+   * fetching out of `components/*`, and the token belongs to the note, so the note's own store is
+   * where it belongs. Writing it back into `selected` is what stops the editor from offering to
+   * share something that is already shared.
+   */
+  share: async (id) => {
+    if (get().busy) return null;
+    set({ error: null, busy: 'share' });
+    try {
+      const { share_token: token } = await api.shareNote(id);
+      set((prev) => ({
+        selected: prev.selected?.id === id ? { ...prev.selected, share_token: token } : prev.selected,
+      }));
+      return token;
+    } catch (err) {
+      set({ error: err.message });
+      reportFailure(err);
+      return null;
+    } finally {
+      set({ busy: null });
+    }
+  },
+
+  unshare: async (id) => {
+    if (get().busy) return;
+    set({ error: null, busy: 'unshare' });
+    try {
+      await api.unshareNote(id);
+      set((prev) => ({
+        selected: prev.selected?.id === id ? { ...prev.selected, share_token: null } : prev.selected,
+      }));
+      const lang = selectLang(usePrefsStore.getState());
+      useUiStore.getState().notify(translate(lang, 'share.revoked'), 'status');
     } catch (err) {
       set({ error: err.message });
       reportFailure(err);

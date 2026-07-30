@@ -29,8 +29,24 @@ describe('useDownload', () => {
 
     expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
     expect(click).toHaveBeenCalled();
-    // The object URL pins the blob in memory; an export of a whole account is not small.
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:fake');
+  });
+
+  it('defers revoking the blob past the tick that clicked', async () => {
+    // Asserted through the scheduling rather than through a timer: `act` flushes pending timers, so
+    // a fake-timer version of this test passes against the broken code it is meant to catch.
+    const schedule = vi.spyOn(globalThis, 'setTimeout');
+    const { result } = renderHook(() => useDownload());
+
+    await act(async () => {
+      await result.current.download(async () => ({ blob: new Blob(['x']), filename: 'a.md' }));
+    });
+
+    // click() starts the download asynchronously; invalidating the blob in the same tick cancels it
+    // outright in Firefox and Safari, and passes in Chrome — which is how it would have shipped.
+    expect(schedule).toHaveBeenCalledWith(expect.any(Function), 0);
+
+    // And it does still happen: the object URL pins the blob, and a whole account is not small.
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:fake'));
   });
 
   it('leaves no anchor behind in the document', async () => {

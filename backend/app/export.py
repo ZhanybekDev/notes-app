@@ -63,28 +63,37 @@ def to_markdown(note: Note) -> str:
 
 
 def filenames_for(notes: Iterable[Note]) -> dict[int, str]:
-    """Assign each note a name, and settle collisions by identity rather than by counter.
+    """Assign each note a name, and guarantee no two notes get the same one.
 
-    Two notes called "Meeting" are common, an empty title is common, and a counter would rename a
-    file every time an unrelated note is added or removed. Appending the note's id keeps a given
-    note's filename stable across exports, which is what matters if someone exports into the same
-    folder twice.
+    Two notes called "Meeting" are common and an empty title is common, so a shared slug earns both
+    notes their id — a counter alone would renumber files whenever an unrelated note appeared, and
+    the id keeps a given note's name stable across exports.
+
+    The id is not enough by itself, which is the subtle part: a note titled "Meeting-1" produces the
+    exact name the disambiguation gives to note 1 of two "Meeting"s. Two entries with one name in a
+    zip is not an error anywhere — `zipfile` writes both with a warning nobody reads, and every
+    extraction tool keeps the last. The export would lose a note, silently, which is the one thing an
+    export must never do. So names are assigned against the set already handed out, and a name that
+    is taken gets a numeric suffix until it is not.
     """
-    seen: dict[str, int] = {}
+    notes = list(notes)
+    slug_counts: dict[str, int] = {}
+    for note in notes:
+        slug = slugify(note.title)
+        slug_counts[slug] = slug_counts.get(slug, 0) + 1
+
+    taken: set[str] = set()
     names: dict[int, str] = {}
     for note in notes:
         slug = slugify(note.title)
-        if slug in seen:
-            names[note.id] = f"{slug}-{note.id}.md"
-            # The first note keeps its bare name only until a second one claims the slug; from then
-            # on both carry an id, so neither looks arbitrarily privileged.
-            first = seen[slug]
-            if first is not None:
-                names[first] = f"{slug}-{first}.md"
-                seen[slug] = None
-        else:
-            seen[slug] = note.id
-            names[note.id] = f"{slug}.md"
+        base = slug if slug_counts[slug] == 1 else f"{slug}-{note.id}"
+        candidate = f"{base}.md"
+        suffix = 2
+        while candidate in taken:
+            candidate = f"{base}-{suffix}.md"
+            suffix += 1
+        taken.add(candidate)
+        names[note.id] = candidate
     return names
 
 

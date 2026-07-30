@@ -108,7 +108,8 @@ graph TD
   no-store`. `PublicNoteOut` is a separate model from `NoteOut` on purpose: reusing the private one
   would publish whatever field somebody adds to it next, silently.
 - **`app/export.py`** — notes as files: markdown with JSON-safe front matter, a filename that cannot
-  become a path, and a zip built into a spooled temporary file so an account with thousands of notes
+  become a path and cannot equal another note's (two entries under one name in a zip is not an error
+  anywhere — extraction keeps the last, so the export would lose a note silently), and a zip built into a spooled temporary file so an account with thousands of notes
   does not decide how much memory the process uses. Collisions are settled by appending the note id
   rather than a counter, so a file keeps its name across exports. `GET /notes/export` takes the same
   filters as the listing (they share `_visible_notes`) and is declared **before** `/{note_id}`, since
@@ -139,7 +140,10 @@ graph TD
 
 - `routers/*` may depend on `deps`, `schemas`, `models`, `auth`; they must **not** depend on each other.
 - `models` depends only on `db`. Business logic does not live here.
-- Frontend `components/*` stay presentational; fetching lives in `pages/*`.
+- Frontend `components/*` stay presentational; fetching lives in `pages/*` and the stores they call.
+  `ShareControl` renders the token it is handed and calls `onShare`/`onRevoke`; `notesStore.share`
+  and `.unshare` do the requesting, and the page wires the two together. Deriving the token into
+  component state instead is what made the editor show the previous note's link after a switch.
 - `api.js` is the only module that calls `fetch`.
 - Any new environment variable flows through `app/config.py` on the backend and through `import.meta.env` (`VITE_...`) on the frontend — never read directly from `process.env` or `localStorage` in business code.
 

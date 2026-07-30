@@ -1,55 +1,27 @@
-import { useState } from 'react';
-
 import BusyButton from './BusyButton.jsx';
-import { api } from '../api.js';
 import { useLang } from '../i18n.jsx';
-import { reportFailure, useUiStore } from '../stores/uiStore.js';
+import { useUiStore } from '../stores/uiStore.js';
 
 /** The address a reader would open. Built here rather than on the server: the server has no idea
  *  which host the app is served from, and guessing it in a config would be one more thing to keep
  *  in sync with reality. */
-function shareUrl(token) {
+export function shareUrl(token) {
   return `${window.location.origin}/s/${token}`;
 }
 
 /**
  * The owner's half of sharing: publish a link, copy it, take it back.
  *
- * Local state rather than a store: nothing outside this note's editor needs to know, and the token
- * arrives from the note itself on the next load.
+ * Presentational — it renders the token it is given and calls out for the two actions, because
+ * `docs/architecture.md` keeps fetching in pages and stores. Copying stays here: the clipboard is a
+ * browser API, not a request, and threading it through two components would buy nothing.
+ *
+ * `token` is read on every render rather than seeded into state, so switching notes in the editor
+ * cannot leave the previous note's link on screen.
  */
-export default function ShareControl({ noteId, token: initialToken }) {
+export default function ShareControl({ token, busy = null, onShare, onRevoke }) {
   const { t } = useLang();
-  const [token, setToken] = useState(initialToken ?? null);
-  const [busy, setBusy] = useState(null); // 'share' | 'revoke' | 'copy'
   const notify = useUiStore((s) => s.notify);
-
-  const share = async () => {
-    if (busy) return;
-    setBusy('share');
-    try {
-      const { share_token: fresh } = await api.shareNote(noteId);
-      setToken(fresh);
-    } catch (err) {
-      reportFailure(err);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const revoke = async () => {
-    if (busy) return;
-    setBusy('revoke');
-    try {
-      await api.unshareNote(noteId);
-      setToken(null);
-      notify(t('share.revoked'), 'status');
-    } catch (err) {
-      reportFailure(err);
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const copy = async () => {
     try {
@@ -57,9 +29,10 @@ export default function ShareControl({ noteId, token: initialToken }) {
       notify(t('share.copied'), 'status');
     } catch {
       // Clipboard access is refused in plenty of ordinary situations — an insecure origin, a
-      // permission the reader declined. The link is on screen either way, so this is a nuisance
-      // rather than a failure, and it is not worth an alert.
-      notify(shareUrl(token), 'status');
+      // permission the reader declined. The link goes on screen instead, and as an error rather
+      // than a notice: an error toast lasts twice as long, and this one has to be read and copied
+      // by hand.
+      notify(shareUrl(token), 'error');
     }
   };
 
@@ -68,7 +41,7 @@ export default function ShareControl({ noteId, token: initialToken }) {
       <BusyButton
         type="button"
         className="btn btn-ghost btn-sm"
-        onClick={share}
+        onClick={onShare}
         busy={busy === 'share'}
         title={t('share.hint')}
       >
@@ -86,8 +59,8 @@ export default function ShareControl({ noteId, token: initialToken }) {
       <BusyButton
         type="button"
         className="link-button"
-        onClick={revoke}
-        busy={busy === 'revoke'}
+        onClick={onRevoke}
+        busy={busy === 'unshare'}
       >
         {t('share.revoke')}
       </BusyButton>

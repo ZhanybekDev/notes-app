@@ -5,6 +5,8 @@ import TagFilter from '../components/TagFilter.jsx';
 import BusyButton from '../components/BusyButton.jsx';
 import { SkeletonList } from '../components/Skeleton.jsx';
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js';
+import { useDownload } from '../hooks/useDownload.js';
+import { api } from '../api.js';
 import { useLang } from '../i18n.jsx';
 import { useAccountStore } from '../stores/accountStore.js';
 import { useNotesStore } from '../stores/notesStore.js';
@@ -42,6 +44,8 @@ export default function Notes({ registerAction }) {
   const toggleBulk = useNotesStore((s) => s.toggleBulk);
   const toggleSelect = useNotesStore((s) => s.toggleSelect);
   const selectAll = useNotesStore((s) => s.selectAll);
+  const share = useNotesStore((s) => s.share);
+  const unshare = useNotesStore((s) => s.unshare);
 
   // Read here rather than in NoteEditor: components stay presentational, pages fetch. "Still
   // loading" (null) and "could not load" are different states — the hint by the date field stays
@@ -55,6 +59,7 @@ export default function Notes({ registerAction }) {
   const pending = !loaded;
   const showSkeleton = useDelayedFlag(status === 'loading');
   const retry = useCallback(() => load(0, false), [load]);
+  const { busy: exporting, download } = useDownload();
 
   const searchRef = useRef(null);
   const editorRef = useRef(null);
@@ -199,6 +204,11 @@ export default function Notes({ registerAction }) {
             onArchive={setArchive}
             reminderPrefs={reminderPrefs}
             reminderPrefsFailed={reminderPrefsFailed}
+            shareBusy={busy}
+            onShare={() => share(selected.id)}
+            onRevoke={() => unshare(selected.id)}
+            onExport={() => download(() => api.exportNote(selected.id))}
+            exporting={exporting}
             saving={busy === 'save'}
             deleting={busy === 'remove'}
             flagBusy={busy === 'pin' || busy === 'archive'}

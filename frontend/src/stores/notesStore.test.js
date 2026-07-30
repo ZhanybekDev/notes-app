@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api.js';
 import { resetStores } from './index.js';
 import { PAGE_SIZE, useNotesStore } from './notesStore.js';
+import { useUiStore } from './uiStore.js';
 
 const note = (id, extra = {}) => ({ id, title: `note ${id}`, tags: [], ...extra });
 const page = (items, total = items.length) => ({ items, total });
@@ -362,5 +363,57 @@ describe('a mutation in flight', () => {
     finish({ items: [], total: 0 });
     await more;
     expect(store().busy).toBeNull();
+  });
+});
+
+
+describe('sharing from the store', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(api, 'tags').mockResolvedValue([]);
+    vi.spyOn(api, 'listNotes').mockResolvedValue({ items: [], total: 0 });
+  });
+
+  it('writes the token back onto the open note', async () => {
+    vi.spyOn(api, 'shareNote').mockResolvedValue({ share_token: 'tok', shared_at: 'now' });
+    useNotesStore.setState({ selected: { id: 5, title: 'x', share_token: null } });
+
+    await store().share(5);
+
+    // Without this the editor keeps offering to share a note that already has a link.
+    expect(store().selected.share_token).toBe('tok');
+  });
+
+  it('leaves another note alone if the selection moved while the request was out', async () => {
+    let finish;
+    vi.spyOn(api, 'shareNote').mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    useNotesStore.setState({ selected: { id: 5, share_token: null } });
+
+    const pending = store().share(5);
+    useNotesStore.setState({ selected: { id: 9, share_token: null } });
+    finish({ share_token: 'tok', shared_at: 'now' });
+    await pending;
+
+    expect(store().selected.id).toBe(9);
+    expect(store().selected.share_token).toBeNull();
+  });
+
+  it('clears the token and says so when the link is revoked', async () => {
+    vi.spyOn(api, 'unshareNote').mockResolvedValue(null);
+    useNotesStore.setState({ selected: { id: 5, share_token: 'tok' } });
+
+    await store().unshare(5);
+
+    expect(store().selected.share_token).toBeNull();
+    expect(useUiStore.getState().toasts[0].message).toBe('Link revoked');
+  });
+
+  it('reports a failed share and lets go of the busy tag', async () => {
+    vi.spyOn(api, 'shareNote').mockRejectedValue(new Error('server error'));
+    useNotesStore.setState({ selected: { id: 5, share_token: null } });
+
+    expect(await store().share(5)).toBeNull();
+    expect(store().busy).toBeNull();
+    expect(useUiStore.getState().toasts[0].kind).toBe('error');
   });
 });
