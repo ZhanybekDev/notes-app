@@ -257,12 +257,16 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
 - **Migrations** — Alembic; `alembic upgrade head` runs at backend container startup.
 - **i18n** — two languages (`en`, `ru`); EN is the fallback when a key is missing. The bot has its
   own catalogue in `app/bot_i18n.py`: it has no session and cannot read the browser's language, so
-  it follows `language_code` from the Telegram update, stored on the account at link time so that
-  reminders sent days later read the same way as the confirmation did.
+  it follows `language_code` from the Telegram update and records it on the account, refreshed on
+  every update rather than written once at link time, so that reminders sent days later read the
+  same way as the last answer did even for someone who switched their client language since.
 - **Theming** — `data-theme="light|dark"` on `<html>`; `system` resolves from `prefers-color-scheme`.
 - **Testing boundary** — backend uses SQLite in tests; any Postgres-specific SQL must stay behind SQLAlchemy or be called out. `claim_batch` uses `FOR UPDATE SKIP LOCKED`, which SQLite silently ignores — the locking behaviour is therefore asserted against the compiled Postgres SQL rather than by running two sessions.
 - **Bot commands** — `/today`, `/upcoming`, `/status`, `/pause`, `/resume`, `/help`, published with
-  `setMyCommands` per language. Everything but `/start` and `/help` needs a linked chat; an
-  unlinked one is invited to link rather than told anything about an account.
-- **Reminders** — a note's date fires at the owner's `reminder_time` in their `timezone`. Scheduling converts local → UTC once, at materialisation, and re-derives it whenever settings change. Rows are created up to 48 h ahead and never fire more than 24 h late, so a worker that was down does not flush a backlog.
+  `setMyCommands` once per supported language and once for the language-less scope, which is what
+  clients outside `en`/`ru` resolve against. Publishing is advisory but not one-shot: a worker that
+  could not reach Telegram at startup retries every five minutes until the menu takes. Everything
+  but `/start` and `/help` needs a linked chat; an unlinked one is invited to link rather than told
+  anything about an account.
+- **Reminders** — a note's date fires at the owner's `reminder_time` in their `timezone`. Scheduling converts local → UTC once, at materialisation, and re-derives it whenever settings change. Rows are created up to 48 h ahead and never fire more than 24 h late, so a worker that was down does not flush a backlog. A cancelled row is revived only into the future, so the messages `/pause` suppressed are not delivered in a burst on `/resume`.
 - **Configuration** — `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME` reach the containers through `backend/.env`, which pydantic-settings reads directly (`env_file=".env"`, WORKDIR `/app`). They are deliberately *not* declared in compose `environment`: `${VAR:-}` interpolates to an empty string when no root `.env` exists and would silently override the file. Empty values are normalised to `None`, so a copied `.env.example` reads as "not configured" rather than "configured with a blank token".
