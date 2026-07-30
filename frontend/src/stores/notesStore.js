@@ -1,13 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api.js';
-import { useUiStore } from './uiStore.js';
-
-// One direction only: domain stores reach into the UI store to show a failure, and `uiStore` imports
-// nothing, so there is no cycle. `error` below stays the source of truth — the toast is how a failure
-// is shown, not where it is kept.
-function report(message) {
-  useUiStore.getState().notify(message, 'error');
-}
+import { reportFailure } from './uiStore.js';
 
 export const PAGE_SIZE = 20;
 
@@ -53,6 +46,12 @@ export function resetRequestSequence() {
  * The store is headless: no `window` access lives here, so it can be tested without a DOM. The
  * confirmation dialog before a bulk delete stays in the page, which passes an already-confirmed
  * list of ids.
+ *
+ * Failures go two ways on purpose. `reportFailure` shows the event, which leaves; `error` records it
+ * and is the field the tests assert against. No component reads `error` today — the screens show a
+ * failure through `status` — and it stays anyway, because it is the only durable record that the last
+ * request failed and what it said. One direction only: domain stores reach into `uiStore`, and
+ * `uiStore` imports nothing, so there is no cycle.
  */
 export const useNotesStore = create((set, get) => ({
   ...initialState,
@@ -89,7 +88,7 @@ export const useNotesStore = create((set, get) => ({
     } catch (err) {
       if (ticket !== latestRequest) return;
       set({ status: 'error', error: err.message });
-      report(err.message);
+      reportFailure(err);
     }
   },
 
@@ -128,7 +127,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
-      report(err.message);
+      reportFailure(err);
     }
   },
 
@@ -140,7 +139,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
-      report(err.message);
+      reportFailure(err);
     }
   },
 
@@ -151,7 +150,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
-      report(err.message);
+      reportFailure(err);
     }
   },
 
@@ -166,7 +165,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
-      report(err.message);
+      reportFailure(err);
     }
   },
 
@@ -179,7 +178,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
-      report(err.message);
+      reportFailure(err);
     }
   },
 

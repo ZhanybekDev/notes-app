@@ -49,6 +49,7 @@ export default function Notes({ registerAction }) {
 
   // Failures reach the reader as a toast; what stays on screen is the list's own state.
   const failed = status === 'error';
+  const pending = status === 'idle' || status === 'loading';
   const showSkeleton = useDelayedFlag(status === 'loading');
   const retry = useCallback(() => load(0, false), [load]);
 
@@ -167,6 +168,7 @@ export default function Notes({ registerAction }) {
             filtered={Boolean(search || activeTag)}
             archivedView={view === 'archived'}
             failed={failed}
+            pending={pending}
             onRetry={retry}
           />
         )}

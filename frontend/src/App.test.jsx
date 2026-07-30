@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import App from './App.jsx';
 import { api } from './api.js';
 import { useSessionStore } from './stores/sessionStore.js';
+import { useUiStore } from './stores/uiStore.js';
 
 const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature';
 
@@ -82,5 +83,21 @@ describe('a 401 ends the session', () => {
 
     await expect(api.tags()).rejects.toThrow('Unauthorized');
     await waitFor(() => expect(useSessionStore.getState().token).toBeNull());
+  });
+
+  it('does not put an "Unauthorized" alert on the login form it just sent you to', async () => {
+    useSessionStore.getState().login(JWT);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      status: 401,
+      ok: false,
+      json: async () => ({}),
+    });
+
+    renderApp('/notes');
+    await screen.findByText('Welcome back');
+
+    // The redirect is the feedback. A toast would announce an untranslated word assertively for what
+    // is the ordinary end of a session.
+    expect(useUiStore.getState().toasts).toEqual([]);
   });
 });

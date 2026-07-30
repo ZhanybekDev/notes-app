@@ -54,6 +54,20 @@ describe('Notes page on the store', () => {
     expect(await screen.findByText('Pick a note')).toBeInTheDocument();
   });
 
+  it('claims nothing about the notes until the first answer arrives', async () => {
+    let answer;
+    list.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    renderNotes();
+
+    // The skeleton deliberately waits 300ms, and the empty state used to fill that gap by announcing
+    // an account with no notes — on every single visit.
+    expect(screen.queryByText('No notes yet')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nothing found')).not.toBeInTheDocument();
+
+    answer({ items: [], total: 0 });
+    expect(await screen.findByText('No notes yet')).toBeInTheDocument();
+  });
+
   it('tells an empty account apart from a search that found nothing', async () => {
     list.mockResolvedValue({ items: [], total: 0 });
     renderNotes();

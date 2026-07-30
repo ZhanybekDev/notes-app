@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../api.js';
+import { ApiError } from '../api.js';
 import { useAccountStore } from './accountStore.js';
+import { usePrefsStore } from './prefsStore.js';
+import { useUiStore } from './uiStore.js';
 
 const SETTINGS = {
   timezone: 'Asia/Bishkek',
@@ -137,5 +140,52 @@ describe('telegram', () => {
     expect(await store().unlink()).toBeNull();
     expect(store().error).toBe('500');
     expect(store().prefs).toEqual(SETTINGS);
+  });
+});
+
+
+describe('what a save tells the reader', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    useUiStore.setState(useUiStore.getInitialState(), true);
+    usePrefsStore.setState({ lang: null });
+  });
+
+  it('confirms a save politely, not as an alert', async () => {
+    vi.spyOn(api, 'updateSettings').mockResolvedValue(SETTINGS);
+    await store().patch({ notifications_enabled: true });
+
+    const [toast] = useUiStore.getState().toasts;
+    expect(toast.kind).toBe('status');
+  });
+
+  it('speaks the language the interface speaks when none was ever chosen', async () => {
+    // lang is null by default — "follow the browser" — and jsdom reports en-US. Reading the field
+    // raw used to reach MESSAGES[null] and fall through to English no matter what the browser said,
+    // which is invisible in English and wrong in Russian.
+    vi.spyOn(navigator, 'language', 'get').mockReturnValue('ru-RU');
+    vi.spyOn(api, 'updateSettings').mockResolvedValue(SETTINGS);
+
+    await store().patch({ notifications_enabled: true });
+
+    expect(useUiStore.getState().toasts[0].message).toBe('Сохранено.');
+  });
+
+  it('follows an explicit choice over the browser', async () => {
+    usePrefsStore.setState({ lang: 'ru' });
+    vi.spyOn(api, 'updateSettings').mockResolvedValue(SETTINGS);
+
+    await store().patch({ notifications_enabled: true });
+
+    expect(useUiStore.getState().toasts[0].message).toBe('Сохранено.');
+  });
+
+  it('says nothing about a 401 — the session redirect already did', async () => {
+    vi.spyOn(api, 'updateSettings').mockRejectedValue(new ApiError('Unauthorized', 401));
+    await store().patch({ notifications_enabled: true });
+
+    expect(useUiStore.getState().toasts).toEqual([]);
+    // The failure is still recorded where the screens read it from.
+    expect(store().error).toBe('Unauthorized');
   });
 });

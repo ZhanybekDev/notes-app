@@ -108,7 +108,7 @@ graph TD
   flag the session store exposes as `persistAvailable`, which Settings turns into a warning: the
   session will not survive a reload, and the user learns that before it happens rather than after.
 - **`theme.js`** — turns the stored preference into a `data-theme` attribute on `<html>`: `applyTheme(theme)` plus the subscription and `prefers-color-scheme` listener that `initTheme()` installs. The preference itself lives in `stores/prefsStore`.
-- **`i18n.jsx`** — the message catalogue plus `useLang()`, which reads the language from `stores/prefsStore` and returns the same `{ lang, setLang, t }` shape it always did. EN is the fallback when RU is missing. No Context: the app has none left.
+- **`messages.js` / `i18n.jsx`** — the catalogue and the pure `translate(lang, key, vars)` live in `messages.js` so the headless store layer can translate without importing a module that also exports React hooks. `i18n.jsx` holds `useLang()`, which reads the language from `stores/prefsStore` and returns the same `{ lang, setLang, t }` shape it always did, and re-exports both names. EN is the fallback when RU is missing. No Context: the app has none left. The language is always read through `selectLang`, never `state.lang` — that field is `null` until the reader picks one, and reading it raw resolves to English regardless of the browser.
 - **`hooks/useShortcuts.js`** — global `keydown` listener; ignores editable targets except for `Cmd/Ctrl+S`.
 - **`components/*`** — presentational + small behavior: `NoteEditor` (draft state + markdown toolbar), `NoteList` (virtualized-ready row), `TagFilter`, `ThemeToggle`, `LanguageToggle`, `MarkdownToolbar`, `HelpOverlay`.
 - **`pages/*`** — screens with data-fetching and orchestration: `Login`, `Register`, `Notes` (list + editor + bulk + pagination + pin/archive), `Calendar`, `Settings`.
@@ -226,7 +226,8 @@ frontend/src/
 ├── App.jsx             route map, header, global shortcuts wiring
 ├── api.js              fetch wrapper + API client
 ├── theme.js            light / dark / system via data-theme attribute
-├── i18n.jsx            EN + RU catalogue, useLang(), dotted keys with {name} interpolation
+├── messages.js         EN + RU catalogue + translate(): pure, importable from stores
+├── i18n.jsx            useLang(), initLang(); re-exports MESSAGES and translate
 ├── styles.css          entry point: five @imports, order significant
 ├── styles/             tokens · base · components · screens · motion
 ├── stores/             notesStore · accountStore · sessionStore · prefsStore · uiStore ·
@@ -234,7 +235,7 @@ frontend/src/
 ├── hooks/
 │   ├── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
 │   └── useDelayedFlag.js  raises a flag only if the wait outlasts 300ms
-├── components/         NoteEditor · NoteList · TagFilter ·
+├── components/         NoteEditor · NoteList · TagFilter · LoadFailure ·
 │                       ThemeToggle · LanguageToggle · Toaster · Skeleton ·
 │                       MarkdownToolbar · HelpOverlay
 └── pages/              Login · Register · Notes · Calendar · Settings
@@ -289,11 +290,15 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
   one dismissed hint, persisted to the three legacy keys through a fan-out adapter because `persist`
   otherwise owns exactly one storage entry per store. A language the user never picked is not
   written at all — `lang: null` means "follow the browser", read through `selectLang`. Async actions reload what they invalidated, so
-  no caller has to remember. Domain stores report a failure by calling `uiStore.notify` — one
-  direction only, `uiStore` imports nothing — while keeping their own `error` field as the source of
-  truth: the toast is how a failure is shown, not where it is kept. A background failure therefore
-  appears twice on purpose, as an event (the toast, which leaves) and as a state (the failure block in
-  the list or the calendar grid, which stays, with a retry). Form errors stay next to their field: a
+  no caller has to remember. Domain stores report a failure by calling `reportFailure` from `uiStore`
+  — one direction only, `uiStore` imports nothing — while keeping their own `error` field as the source
+  of truth: the toast is how a failure is shown, not where it is kept. `reportFailure` swallows a 401,
+  because `api.js` answers that by ending the session and the redirect to the login form is already the
+  feedback; a toast would put an untranslated "Unauthorized" alert on that form. A background failure therefore
+  appears twice on purpose, as an event (the toast, which leaves) and as a state (`components/LoadFailure`
+  in the list, the calendar grid or one opened day, which stays, with a retry). Empty states are
+  claims about the server's answer, so they render only once an answer exists: while a request is in
+  flight and there is nothing yet, the area stays blank rather than announcing an empty account. Form errors stay next to their field: a
   toast about a wrong password would expire while it was being read. What stays in `useState`: form
   drafts, the calendar's visible month, the timer that dismisses the "saved" notice — state nobody
   else needs, plus one timer that must not outlive its screen.

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+import LoadFailure from '../components/LoadFailure.jsx';
 import { useLang } from '../i18n.jsx';
-import { useUiStore } from '../stores/uiStore.js';
+import { reportFailure } from '../stores/uiStore.js';
 
 function monthMatrix(year, month) {
   const first = new Date(year, month - 1, 1);
@@ -37,6 +38,9 @@ export default function Calendar() {
   // month" — and once the toast leaves, nothing on screen would say otherwise.
   const [failed, setFailed] = useState(false);
   const [reloads, setReloads] = useState(0);
+  // The opened day has its own lifecycle: its notes are fetched one by one, and that can fail while
+  // the month around it loaded fine.
+  const [dayStatus, setDayStatus] = useState('ready'); // ready | loading | error
 
   useEffect(() => {
     let alive = true;
@@ -47,7 +51,7 @@ export default function Calendar() {
       .catch((e) => {
         if (!alive) return;
         setFailed(true);
-        useUiStore.getState().notify(e.message, 'error');
+        reportFailure(e);
       });
     return () => { alive = false; };
   }, [year, month, reloads]);
@@ -60,16 +64,23 @@ export default function Calendar() {
 
   const openDay = async (date) => {
     setSelectedDate(date);
+    setDayStatus('ready');
     const day = days.find((d) => d.date === date);
     if (!day) {
       setNotesForDay([]);
       return;
     }
+    // Dropped before the fetch, not after: keeping them would leave the previous day's notes sitting
+    // under this day's heading for as long as the request takes — and permanently if it fails.
+    setNotesForDay([]);
+    setDayStatus('loading');
     try {
       const fetched = await Promise.all(day.note_ids.map((id) => api.getNote(id)));
       setNotesForDay(fetched);
+      setDayStatus('ready');
     } catch (err) {
-      useUiStore.getState().notify(err.message, 'error');
+      setDayStatus('error');
+      reportFailure(err);
     }
   };
 
@@ -103,13 +114,7 @@ export default function Calendar() {
         </div>
       </header>
       {failed ? (
-        <div className="list-error">
-          <p className="list-empty-title">{t('notes.loadFailedTitle')}</p>
-          <p className="list-empty-hint">{t('notes.loadFailedHint')}</p>
-          <button type="button" className="btn btn-ghost" onClick={() => setReloads((n) => n + 1)}>
-            {t('notes.retry')}
-          </button>
-        </div>
+        <LoadFailure onRetry={() => setReloads((n) => n + 1)} />
       ) : (
       <div className="cal-grid">
         {weekdays.map((w) => <div key={w} className="cal-weekday">{w}</div>)}
@@ -137,7 +142,9 @@ export default function Calendar() {
       {selectedDate && (
         <div className="day-notes">
           <h3>{t('calendar.notesOn')} {selectedDate}</h3>
-          {notesForDay.length === 0 ? (
+          {dayStatus === 'error' ? (
+            <LoadFailure onRetry={() => openDay(selectedDate)} />
+          ) : dayStatus === 'loading' ? null : notesForDay.length === 0 ? (
             <p className="day-notes-empty">{t('calendar.noNotes')}</p>
           ) : (
             <ul>

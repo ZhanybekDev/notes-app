@@ -110,6 +110,43 @@ describe('Calendar page', () => {
     expect(await screen.findByText('No notes on this day.')).toBeInTheDocument();
   });
 
+  it('never leaves one day notes under another day heading', async () => {
+    const getNote = vi.spyOn(api, 'getNote');
+    getNote.mockResolvedValue({ id: 3, title: 'Roadmap', content: 'q3 plan' });
+    renderCalendar();
+    await screen.findByRole('heading', { name: 'August 2026' });
+
+    await userEvent.click(document.querySelector('.cal-cell.today'));
+    await screen.findByText('Roadmap');
+
+    // The 3rd has notes too, and this time the server refuses.
+    getNote.mockRejectedValue(new Error('offline'));
+    await userEvent.click(document.querySelectorAll('.cal-cell:not(.empty)')[2]);
+
+    expect(await screen.findByText("Couldn't load")).toBeInTheDocument();
+    expect(screen.queryByText('Roadmap')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /2026-08-03/ })).toBeInTheDocument();
+
+    // The 3rd holds two notes, so the retry has to fetch both.
+    getNote.mockImplementation(async (id) => ({ id, title: `Note ${id}`, content: '' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Note 1')).toBeInTheDocument();
+    expect(screen.getByText('Note 2')).toBeInTheDocument();
+  });
+
+  it('says nothing about the day while its notes are on the way', async () => {
+    let answer;
+    vi.spyOn(api, 'getNote').mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    renderCalendar();
+    await screen.findByRole('heading', { name: 'August 2026' });
+
+    await userEvent.click(document.querySelector('.cal-cell.today'));
+
+    expect(screen.queryByText('No notes on this day.')).not.toBeInTheDocument();
+    answer({ id: 3, title: 'Roadmap', content: 'q3' });
+    expect(await screen.findByText('Roadmap')).toBeInTheDocument();
+  });
+
   it('replaces the grid with a retry when the month fails to load', async () => {
     calendar.mockRejectedValueOnce(new Error('offline'));
     renderCalendar();

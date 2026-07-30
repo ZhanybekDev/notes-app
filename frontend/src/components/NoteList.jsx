@@ -1,3 +1,4 @@
+import LoadFailure from './LoadFailure.jsx';
 import { useLang } from '../i18n.jsx';
 
 export default function NoteList({
@@ -10,6 +11,7 @@ export default function NoteList({
   filtered = false,
   archivedView = false,
   failed = false,
+  pending = false,
   onRetry,
 }) {
   const { t } = useLang();
@@ -17,15 +19,14 @@ export default function NoteList({
   // A failed load has no notes either, and without its own branch it would render as "no notes yet" —
   // a lie about the data. The toast reports the event and leaves; this block holds the state.
   if (failed && !notes.length) {
-    return (
-      <div className="list-error">
-        <p className="list-empty-title">{t('notes.loadFailedTitle')}</p>
-        <p className="list-empty-hint">{t('notes.loadFailedHint')}</p>
-        <button type="button" className="btn btn-ghost" onClick={onRetry}>
-          {t('notes.retry')}
-        </button>
-      </div>
-    );
+    return <LoadFailure onRetry={onRetry} />;
+  }
+
+  // Nothing is known yet, so nothing is claimed. Every one of the branches below is a statement about
+  // the server's answer, and until the first answer arrives — or during the 300ms the skeleton waits
+  // out on a retry — the honest output is empty space.
+  if (pending && !notes.length) {
+    return null;
   }
 
   if (!notes.length) {

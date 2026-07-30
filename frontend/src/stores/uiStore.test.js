@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { ApiError } from '../api.js';
 import { resetStores } from './index.js';
-import { useUiStore } from './uiStore.js';
+import { reportFailure, useUiStore } from './uiStore.js';
 
 const queue = () => useUiStore.getState().toasts;
 
@@ -54,9 +55,53 @@ describe('uiStore', () => {
     expect(queue()).toEqual([]);
   });
 
+  it('keeps a polite message and an error apart even with identical text', () => {
+    useUiStore.getState().notify('busy', 'error');
+    useUiStore.getState().notify('busy', 'status');
+
+    // Matching on text alone would have renewed the error and given the polite one its eight seconds.
+    expect(queue().map((t) => t.kind)).toEqual(['error', 'status']);
+  });
+
+  it('keeps the stack from growing without bound', () => {
+    for (let i = 0; i < 7; i++) useUiStore.getState().notify(`message ${i}`, 'error');
+
+    expect(queue()).toHaveLength(4);
+    expect(queue()[0].message).toBe('message 3');
+  });
+
   it('defaults to the polite kind when the caller does not say', () => {
     useUiStore.getState().notify('just so you know');
 
     expect(queue()[0].kind).toBe('status');
+  });
+});
+
+
+describe('reportFailure', () => {
+  beforeEach(() => {
+    resetStores();
+  });
+
+  it('shows an ordinary failure as an alert', () => {
+    reportFailure(new ApiError('server error', 500));
+
+    expect(queue()).toEqual([
+      expect.objectContaining({ message: 'server error', kind: 'error' }),
+    ]);
+  });
+
+  it('stays quiet on a 401', () => {
+    // api.js answers a 401 by ending the session; the redirect to the login form is the feedback.
+    // A toast would land on that form saying "Unauthorized" in English, whatever the interface speaks.
+    reportFailure(new ApiError('Unauthorized', 401));
+
+    expect(queue()).toEqual([]);
+  });
+
+  it('survives something that is not an Error at all', () => {
+    reportFailure('plain string');
+
+    expect(queue()[0].message).toBe('plain string');
   });
 });

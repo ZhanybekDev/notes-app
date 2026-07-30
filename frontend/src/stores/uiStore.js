@@ -4,6 +4,10 @@ const initialState = {
   toasts: [],
 };
 
+// A stack taller than this stops being a notification and becomes a wall. Distinct messages are not
+// deduplicated, so a server answering differently every time would otherwise pile up without bound.
+const MAX_VISIBLE = 4;
+
 let nextId = 0;
 
 /**
@@ -37,7 +41,9 @@ export const useUiStore = create((set, get) => ({
    * schedule while the thing it reports is still happening.
    */
   notify: (message, kind = 'status') => {
-    const existing = get().toasts.find((toast) => toast.message === message);
+    // Kind is part of the identity: a polite message whose text happens to match a queued error
+    // must not renew the error and inherit its eight seconds.
+    const existing = get().toasts.find((toast) => toast.message === message && toast.kind === kind);
     if (existing) {
       set((prev) => ({
         toasts: prev.toasts.map((toast) =>
@@ -47,9 +53,24 @@ export const useUiStore = create((set, get) => ({
       return existing.id;
     }
     const id = ++nextId;
-    set((prev) => ({ toasts: [...prev.toasts, { id, message, kind, renewals: 0 }] }));
+    set((prev) => ({
+      toasts: [...prev.toasts, { id, message, kind, renewals: 0 }].slice(-MAX_VISIBLE),
+    }));
     return id;
   },
 
   dismiss: (id) => set((prev) => ({ toasts: prev.toasts.filter((toast) => toast.id !== id) })),
 }));
+
+/**
+ * Shows a failure that has nowhere better to appear.
+ *
+ * A 401 is deliberately not shown. `api.js` answers it by ending the session, so the redirect to the
+ * login form already tells the reader what happened; reporting it as well would put an untranslated
+ * "Unauthorized" alert on that form for eight seconds, announced assertively, for what is a normal
+ * end of a session rather than an error.
+ */
+export function reportFailure(err) {
+  if (err?.status === 401) return;
+  useUiStore.getState().notify(err?.message ?? String(err), 'error');
+}
