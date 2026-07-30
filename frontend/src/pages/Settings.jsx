@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
-import { clearToken } from '../auth.js';
 import { useLang } from '../i18n.jsx';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
 import { useAccountStore } from '../stores/accountStore.js';
+import { useSessionStore } from '../stores/sessionStore.js';
 
 const SAVED_NOTICE_MS = 2500;
 const TZ_DISMISS_KEY = 'notes_tz_suggestion_dismissed';
@@ -46,6 +46,8 @@ export default function Settings() {
   const clearSaved = useAccountStore((s) => s.clearSaved);
 
   // Draft of the time input: unsaved keystrokes are this screen's state, not the app's.
+  const logout = useSessionStore((s) => s.logout);
+
   const [timeDraft, setTimeDraft] = useState('');
   const [tzDismissed, setTzDismissed] = useState(readDismissed);
 
@@ -138,7 +140,7 @@ export default function Settings() {
     if (!window.confirm(t('settings.confirmDelete'))) return;
     try {
       await api.deleteAccount(deletePw);
-      clearToken();
+      logout();
       navigate('/login', { replace: true });
     } catch (err) {
       setDeleteError(err.message);

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
-import { setToken } from '../auth.js';
+import { useSessionStore } from '../stores/sessionStore.js';
 import { useLang } from '../i18n.jsx';
 
 export default function Login() {
@@ -10,13 +10,14 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+  const login = useSessionStore((s) => s.login);
 
   const submit = async (e) => {
     e.preventDefault();
     setError(null);
     try {
       const { access_token } = await api.login(username, password);
-      setToken(access_token);
+      login(access_token);
       navigate('/notes', { replace: true });
     } catch (err) {
       setError(err.message || t('auth.loginFailed'));

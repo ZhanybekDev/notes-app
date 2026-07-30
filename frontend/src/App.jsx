@@ -8,17 +8,22 @@ import Settings from './pages/Settings.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import LanguageToggle from './components/LanguageToggle.jsx';
 import HelpOverlay from './components/HelpOverlay.jsx';
-import { clearToken, isAuthenticated } from './auth.js';
+import { useSessionStore } from './stores/sessionStore.js';
 import { useLang } from './i18n.jsx';
 import { useShortcuts } from './hooks/useShortcuts.js';
 
+// Reading the token through the store makes this reactive: a logout anywhere — this tab, another
+// tab, a 401 from any request — redirects instead of waiting for the next unrelated render.
 function RequireAuth({ children }) {
-  return isAuthenticated() ? children : <Navigate to="/login" replace />;
+  const signedIn = useSessionStore((s) => Boolean(s.token));
+  return signedIn ? children : <Navigate to="/login" replace />;
 }
 
 function Header({ onShowHelp }) {
   const navigate = useNavigate();
   const { t } = useLang();
+  const signedIn = useSessionStore((s) => Boolean(s.token));
+  const logoutSession = useSessionStore((s) => s.logout);
   const linkClass = ({ isActive }) => `nav-link${isActive ? ' active' : ''}`;
 
   const brand = (
@@ -28,7 +33,7 @@ function Header({ onShowHelp }) {
     </div>
   );
 
-  if (!isAuthenticated()) {
+  if (!signedIn) {
     return (
       <nav className="nav">
         {brand}
@@ -40,7 +45,7 @@ function Header({ onShowHelp }) {
   }
 
   const logout = () => {
-    clearToken();
+    logoutSession();
     navigate('/login', { replace: true });
   };
 
@@ -68,6 +73,7 @@ function Header({ onShowHelp }) {
 
 export default function App() {
   const navigate = useNavigate();
+  const signedIn = useSessionStore((s) => Boolean(s.token));
   const [helpOpen, setHelpOpen] = useState(false);
   const pendingActionRef = useRef({});
 
@@ -101,7 +107,7 @@ export default function App() {
           <Route path="/notes" element={<RequireAuth><Notes registerAction={setPendingAction} /></RequireAuth>} />
           <Route path="/calendar" element={<RequireAuth><Calendar /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
-          <Route path="*" element={<Navigate to={isAuthenticated() ? '/notes' : '/login'} replace />} />
+          <Route path="*" element={<Navigate to={signedIn ? '/notes' : '/login'} replace />} />
         </Routes>
       </main>
       <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />

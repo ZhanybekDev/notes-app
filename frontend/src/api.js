@@ -1,4 +1,4 @@
-import { clearToken, getToken } from './auth.js';
+import { useSessionStore } from './stores/sessionStore.js';
 
 const BASE = '/api';
 
@@ -11,7 +11,7 @@ export class ApiError extends Error {
 
 async function request(path, { method = 'GET', body, form } = {}) {
   const headers = {};
-  const token = getToken();
+  const token = useSessionStore.getState().token;
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let payload;
@@ -26,7 +26,7 @@ async function request(path, { method = 'GET', body, form } = {}) {
   const res = await fetch(`${BASE}${path}`, { method, headers, body: payload });
 
   if (res.status === 401) {
-    clearToken();
+    useSessionStore.getState().logout();
     throw new ApiError('Unauthorized', 401);
   }
   if (!res.ok) {

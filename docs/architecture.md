@@ -39,7 +39,7 @@ All four are orchestrated by `docker-compose.yml`. The frontend talks to the bac
 - **`db`** — owns all persistent state. No logic lives here beyond schema (managed by Alembic) and ownership indexes. External deps: none. Data volume: `db_data`.
 - **`backend`** — owns authentication (JWT issuing and verification), authorization (per-row `user_id` filtering), domain logic (notes, tags, calendar aggregation, archive/pin semantics, pagination), and request validation (Pydantic). Exposes HTTP only — anything that has to run without an incoming request lives in `worker`.
 - **`worker`** — the only component that runs on its own clock. Long-polls the Bot API for `/start` deep links, and on a 30-second cadence reconciles the reminder outbox and delivers what is due. Shares the `backend` image and the `app/` package; the process itself holds no domain logic. Kept out of the API process because `backend` runs under uvicorn `--reload`, which would restart a background loop on every file change.
-- **`frontend`** — a pure SPA. Holds no server state; the JWT in `localStorage` is its only persistent local state. Talks only to `/api/*` via the Vite dev proxy. Owns layout, user interaction, optimistic UX affordances (markdown preview, keyboard shortcuts, calendar rendering).
+- **`frontend`** — a pure SPA. Holds no server state. What it keeps between visits lives in four `localStorage` keys — the JWT, the language, the theme and one dismissed hint — all written through `stores/safeStorage.js`. Talks only to `/api/*` via the Vite dev proxy. Owns layout, user interaction, optimistic UX affordances (markdown preview, keyboard shortcuts, calendar rendering).
 
 ### Backend packages
 
@@ -93,15 +93,20 @@ graph TD
     COMP --> API
     COMP --> I18N[i18n.jsx]
     PAGES --> I18N
-    API --> AUTH[auth.js]
+    STORES --> SAFE[safeStorage.js]
     MAIN --> I18N
     MAIN --> THEME[theme.js]
 ```
 
 - **`main.jsx`** — app bootstrap: calls `initTheme()`, wraps the tree in `LangProvider` and `BrowserRouter`.
 - **`App.jsx`** — route map, top-level header, global shortcut wiring, registers actions forwarded from `Notes.jsx` (new/search/save) so shortcuts can reach them.
-- **`api.js`** — the single network seam. Centralizes `Authorization` header, 401-triggered token clear, and JSON envelope. No page talks to `fetch` directly.
-- **`auth.js`** — JWT in `localStorage`. Tiny, deliberate boundary.
+- **`api.js`** — the single network seam. Centralizes the `Authorization` header (token read from `stores/sessionStore`), the 401 that ends a session, and the JSON envelope. No page talks to `fetch` directly.
+- **`stores/safeStorage.js`** — the only module that touches `localStorage` directly, and the
+  successor to the boundary `auth.js` used to hold. Read, write and remove never throw: a browser
+  that refuses storage (private mode, enterprise policy) would otherwise take the app down at import
+  time, because `persist` hydrates before the first render. The first failure logs once and flips a
+  flag the session store exposes as `persistAvailable`, so the degradation is visible rather than
+  silent.
 - **`theme.js`** — `light` / `dark` / `system` via a `data-theme` attribute on `<html>`. Listens to `prefers-color-scheme` when the preference is `system`.
 - **`i18n.jsx`** — React Context provider, `t(key, vars)` hook, EN fallback when RU is missing. The only translation mechanism.
 - **`hooks/useShortcuts.js`** — global `keydown` listener; ignores editable targets except for `Cmd/Ctrl+S`.
@@ -212,10 +217,10 @@ frontend/src/
 ├── main.jsx            bootstraps LangProvider + Router + App
 ├── App.jsx             route map, header, global shortcuts wiring
 ├── api.js              fetch wrapper + API client
-├── auth.js             JWT stored in localStorage
 ├── theme.js            light / dark / system via data-theme attribute
 ├── i18n.jsx            React Context, EN + RU, dotted keys with {name} interpolation
-├── stores/             notesStore · accountStore · index.js (resetStores)
+├── stores/             notesStore · accountStore · sessionStore ·
+│                       safeStorage · index.js (resetStores)
 ├── hooks/
 │   └── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
 ├── components/         NoteEditor · NoteList · TagFilter ·
