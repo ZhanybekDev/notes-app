@@ -70,6 +70,43 @@ describe('uiStore', () => {
     expect(queue()[0].message).toBe('message 3');
   });
 
+  it('spends a polite message before a failure when it needs room', () => {
+    useUiStore.getState().notify('offline', 'error');
+    for (let i = 0; i < 3; i++) useUiStore.getState().notify(`saved ${i}`, 'status');
+    useUiStore.getState().notify('one more', 'status');
+
+    // Three "Saved." notices must not push out the one thing that needed attention.
+    expect(queue().map((toast) => toast.message)).toEqual([
+      'offline', 'saved 1', 'saved 2', 'one more',
+    ]);
+  });
+
+  it('never takes a toast the reader is holding', () => {
+    const held = useUiStore.getState().notify('being read', 'status');
+    useUiStore.getState().hold(held);
+    for (let i = 0; i < 5; i++) useUiStore.getState().notify(`later ${i}`, 'status');
+
+    expect(queue().map((toast) => toast.message)).toContain('being read');
+  });
+
+  it('lets the stack exceed the cap rather than steal what is held', () => {
+    for (let i = 0; i < 4; i++) {
+      const id = useUiStore.getState().notify(`held ${i}`, 'status');
+      useUiStore.getState().hold(id);
+    }
+    useUiStore.getState().notify('newcomer', 'status');
+
+    expect(queue()).toHaveLength(5);
+  });
+
+  it('forgets a toast is held once it is dismissed', () => {
+    const id = useUiStore.getState().notify('being read', 'status');
+    useUiStore.getState().hold(id);
+    useUiStore.getState().dismiss(id);
+
+    expect(useUiStore.getState().held.has(id)).toBe(false);
+  });
+
   it('defaults to the polite kind when the caller does not say', () => {
     useUiStore.getState().notify('just so you know');
 
@@ -103,5 +140,19 @@ describe('reportFailure', () => {
     reportFailure('plain string');
 
     expect(queue()[0].message).toBe('plain string');
+  });
+
+  it('says what a rejection with no status really means', () => {
+    // fetch rejecting is the network, and its own wording ("Failed to fetch") tells the reader
+    // nothing. A message that came from the server is passed through instead — see the test above.
+    reportFailure(new TypeError('Failed to fetch'));
+
+    expect(queue()[0].message).toBe('No connection to the server.');
+  });
+
+  it('falls back to our own words for something with no message at all', () => {
+    reportFailure({ detail: 'nested somewhere' });
+
+    expect(queue()[0].message).toBe('Something went wrong.');
   });
 });

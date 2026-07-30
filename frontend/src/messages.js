@@ -13,6 +13,15 @@ export const MESSAGES = {
     nav: { notes: 'Notes', calendar: 'Calendar', settings: 'Settings', logout: 'Log out' },
     theme: { light: 'Light', dark: 'Dark', system: 'System' },
     toast: { close: 'Dismiss' },
+    common: {
+      loadFailedTitle: "Couldn't load",
+      loadFailedHint: 'The server did not answer. Your notes are safe.',
+      retry: 'Try again',
+    },
+    errors: {
+      offline: 'No connection to the server.',
+      unknown: 'Something went wrong.',
+    },
     lang: { label: { en: 'EN', ru: 'RU' } },
     auth: {
       loginTitle: 'Welcome back',
@@ -40,9 +49,6 @@ export const MESSAGES = {
       emptyTitle: 'No notes yet',
       emptyHint: 'Press + New to write the first one.',
       emptyArchive: 'The archive is empty.',
-      loadFailedTitle: "Couldn't load",
-      loadFailedHint: 'The server did not answer. Your notes are safe.',
-      retry: 'Try again',
       nothingSelected: 'Pick a note',
       pickOrCreate: 'Choose one from the list, or press + New to start writing.',
       viewActive: 'Active',
@@ -182,6 +188,15 @@ export const MESSAGES = {
     nav: { notes: 'Заметки', calendar: 'Календарь', settings: 'Настройки', logout: 'Выйти' },
     theme: { light: 'Светлая', dark: 'Тёмная', system: 'Системная' },
     toast: { close: 'Закрыть' },
+    common: {
+      loadFailedTitle: 'Не удалось загрузить',
+      loadFailedHint: 'Сервер не ответил. Заметки на месте.',
+      retry: 'Попробовать снова',
+    },
+    errors: {
+      offline: 'Нет связи с сервером.',
+      unknown: 'Что-то пошло не так.',
+    },
     lang: { label: { en: 'EN', ru: 'RU' } },
     auth: {
       loginTitle: 'С возвращением',
@@ -209,9 +224,6 @@ export const MESSAGES = {
       emptyTitle: 'Заметок пока нет',
       emptyHint: 'Нажмите «+ Новая», чтобы написать первую.',
       emptyArchive: 'Архив пуст.',
-      loadFailedTitle: 'Не удалось загрузить',
-      loadFailedHint: 'Сервер не ответил. Заметки на месте.',
-      retry: 'Попробовать снова',
       nothingSelected: 'Выберите заметку',
       pickOrCreate: 'Откройте заметку из списка или нажмите «+ Новая».',
       viewActive: 'Активные',

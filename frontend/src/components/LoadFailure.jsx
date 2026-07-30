@@ -11,10 +11,10 @@ export default function LoadFailure({ onRetry }) {
   const { t } = useLang();
   return (
     <div className="list-error">
-      <p className="list-empty-title">{t('notes.loadFailedTitle')}</p>
-      <p className="list-empty-hint">{t('notes.loadFailedHint')}</p>
+      <p className="list-empty-title">{t('common.loadFailedTitle')}</p>
+      <p className="list-empty-hint">{t('common.loadFailedHint')}</p>
       <button type="button" className="btn btn-ghost" onClick={onRetry}>
-        {t('notes.retry')}
+        {t('common.retry')}
       </button>
     </div>
   );

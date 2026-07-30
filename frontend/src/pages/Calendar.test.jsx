@@ -200,7 +200,7 @@ describe('Calendar page', () => {
     // An empty grid would be a positive claim that nothing is scheduled this month.
     expect(await screen.findByText("Couldn't load")).toBeInTheDocument();
     expect(document.querySelector('.cal-grid')).toBeNull();
-    expect(screen.getByTestId('toast-region-alert')).toHaveTextContent('offline');
+    expect(screen.getByTestId('toast-region-alert')).toHaveTextContent('No connection to the server.');
 
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
 

@@ -146,9 +146,9 @@ describe('telegram', () => {
 
 describe('what a save tells the reader', () => {
   beforeEach(() => {
+    // No store reset here: `test/setup.js` calls `resetStores()` after every test, so both the toast
+    // queue and `lang: null` are already back to their initial values.
     vi.restoreAllMocks();
-    useUiStore.setState(useUiStore.getInitialState(), true);
-    usePrefsStore.setState({ lang: null });
   });
 
   it('confirms a save politely, not as an alert', async () => {

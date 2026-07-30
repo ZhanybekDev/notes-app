@@ -180,7 +180,9 @@ describe('Notes page on the store', () => {
     renderNotes();
 
     const alerts = await screen.findByTestId('toast-region-alert');
-    expect(alerts).toHaveTextContent('offline');
+    // A rejection carrying no status never reached the server, so the toast says so in the reader's
+    // language rather than repeating the browser's word for it.
+    expect(alerts).toHaveTextContent('No connection to the server.');
   });
 
   it('leaves a failure block with a retry in the list, not just a toast', async () => {

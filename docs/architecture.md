@@ -294,7 +294,12 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
   — one direction only, `uiStore` imports nothing — while keeping their own `error` field as the source
   of truth: the toast is how a failure is shown, not where it is kept. `reportFailure` swallows a 401,
   because `api.js` answers that by ending the session and the redirect to the login form is already the
-  feedback; a toast would put an untranslated "Unauthorized" alert on that form. A background failure therefore
+  feedback; a toast would put an untranslated "Unauthorized" alert on that form. What the toast says
+  follows one rule: a message the server sent is passed through, because its answer is more specific
+  than anything the client could invent, while a rejection carrying no status never reached the server
+  — the network — and gets our own translated wording instead of the browser's "Failed to fetch". The
+  gap that remains: server `detail` strings are English, and a toast is announced assertively, so a
+  Russian interface can still read one English sentence. A background failure therefore
   appears twice on purpose, as an event (the toast, which leaves) and as a state (`components/LoadFailure`
   in the list, the calendar grid or one opened day, which stays, with a retry). Empty states are
   claims about the server's answer, so they render only once an answer exists: while the first request

@@ -8,9 +8,23 @@ import { useUiStore } from '../stores/uiStore.js';
 const STATUS_MS = 4000;
 const ERROR_MS = 8000;
 
-function Toast({ toast, onDismiss }) {
+function Toast({ toast, onDismiss, onHold, onRelease }) {
   const { t } = useLang();
   const [paused, setPaused] = useState(false);
+
+  const hold = () => {
+    setPaused(true);
+    onHold(toast.id);
+  };
+
+  const release = () => {
+    setPaused(false);
+    onRelease(toast.id);
+  };
+
+  // Held state lives in the store so eviction can respect it, so it has to be given back on unmount —
+  // a toast dismissed while hovered would otherwise leave its id marked as held forever.
+  useEffect(() => () => onRelease(toast.id), [toast.id, onRelease]);
 
   useEffect(() => {
     if (paused) return undefined;
@@ -24,10 +38,10 @@ function Toast({ toast, onDismiss }) {
   return (
     <div
       className={`toast toast-${toast.kind}`}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
+      onMouseEnter={hold}
+      onMouseLeave={release}
+      onFocus={hold}
+      onBlur={release}
     >
       <span className="toast-text">{toast.message}</span>
       <button
@@ -61,6 +75,8 @@ function Toast({ toast, onDismiss }) {
 export default function Toaster() {
   const toasts = useUiStore((s) => s.toasts);
   const dismiss = useUiStore((s) => s.dismiss);
+  const hold = useUiStore((s) => s.hold);
+  const release = useUiStore((s) => s.release);
 
   const polite = toasts.filter((toast) => toast.kind !== 'error');
   const assertive = toasts.filter((toast) => toast.kind === 'error');
@@ -69,12 +85,12 @@ export default function Toaster() {
     <div className="toaster">
       <div className="toast-region" role="status" data-testid="toast-region-status">
         {polite.map((toast) => (
-          <Toast key={toast.id} toast={toast} onDismiss={dismiss} />
+          <Toast key={toast.id} toast={toast} onDismiss={dismiss} onHold={hold} onRelease={release} />
         ))}
       </div>
       <div className="toast-region" role="alert" data-testid="toast-region-alert">
         {assertive.map((toast) => (
-          <Toast key={toast.id} toast={toast} onDismiss={dismiss} />
+          <Toast key={toast.id} toast={toast} onDismiss={dismiss} onHold={hold} onRelease={release} />
         ))}
       </div>
     </div>

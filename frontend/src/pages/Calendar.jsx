@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import LoadFailure from '../components/LoadFailure.jsx';
+import { SkeletonList } from '../components/Skeleton.jsx';
+import { useDelayedFlag } from '../hooks/useDelayedFlag.js';
 import { useLang } from '../i18n.jsx';
 import { reportFailure } from '../stores/uiStore.js';
 
@@ -59,6 +61,10 @@ export default function Calendar() {
       });
     return () => { alive = false; };
   }, [year, month, reloads]);
+
+  // Same rule as the notes list: a skeleton that flashes for 80ms reads as a glitch, so a fast answer
+  // shows nothing at all.
+  const showDaySkeleton = useDelayedFlag(dayStatus === 'loading');
 
   const counts = useMemo(() => {
     const m = new Map();
@@ -151,7 +157,9 @@ export default function Calendar() {
           <h3>{t('calendar.notesOn')} {selectedDate}</h3>
           {dayStatus === 'error' ? (
             <LoadFailure onRetry={() => openDay(selectedDate)} />
-          ) : dayStatus === 'loading' ? null : notesForDay.length === 0 ? (
+          ) : dayStatus === 'loading' ? (
+            showDaySkeleton ? <SkeletonList rows={2} /> : null
+          ) : notesForDay.length === 0 ? (
             <p className="day-notes-empty">{t('calendar.noNotes')}</p>
           ) : (
             <ul>
