@@ -94,11 +94,11 @@ graph TD
     COMP --> I18N[i18n.jsx]
     PAGES --> I18N
     STORES --> SAFE[safeStorage.js]
-    MAIN --> I18N
     MAIN --> THEME[theme.js]
+    THEME --> STORES
 ```
 
-- **`main.jsx`** — app bootstrap: calls `initTheme()`, wraps the tree in `LangProvider` and `BrowserRouter`.
+- **`main.jsx`** — app bootstrap: calls `initTheme()` and `initLang()` before the first render, then mounts `BrowserRouter`. Both run early on purpose: a subscription alone fires only on change, which would paint the first frame light for a dark-theme user and leave `<html lang>` briefly wrong.
 - **`App.jsx`** — route map, top-level header, global shortcut wiring, registers actions forwarded from `Notes.jsx` (new/search/save) so shortcuts can reach them.
 - **`api.js`** — the single network seam. Centralizes the `Authorization` header (token read from `stores/sessionStore`), the 401 that ends a session, and the JSON envelope. No page talks to `fetch` directly.
 - **`stores/safeStorage.js`** — the only module that touches `localStorage` directly, and the
@@ -107,8 +107,8 @@ graph TD
   time, because `persist` hydrates before the first render. The first failure logs once and flips a
   flag the session store exposes as `persistAvailable`, so the degradation is visible rather than
   silent.
-- **`theme.js`** — `light` / `dark` / `system` via a `data-theme` attribute on `<html>`. Listens to `prefers-color-scheme` when the preference is `system`.
-- **`i18n.jsx`** — React Context provider, `t(key, vars)` hook, EN fallback when RU is missing. The only translation mechanism.
+- **`theme.js`** — turns the stored preference into a `data-theme` attribute on `<html>`: `applyTheme(theme)` plus the subscription and `prefers-color-scheme` listener that `initTheme()` installs. The preference itself lives in `stores/prefsStore`.
+- **`i18n.jsx`** — the message catalogue plus `useLang()`, which reads the language from `stores/prefsStore` and returns the same `{ lang, setLang, t }` shape it always did. EN is the fallback when RU is missing. No Context: the app has none left.
 - **`hooks/useShortcuts.js`** — global `keydown` listener; ignores editable targets except for `Cmd/Ctrl+S`.
 - **`components/*`** — presentational + small behavior: `NoteEditor` (draft state + markdown toolbar), `NoteList` (virtualized-ready row), `TagFilter`, `ThemeToggle`, `LanguageToggle`, `MarkdownToolbar`, `HelpOverlay`.
 - **`pages/*`** — screens with data-fetching and orchestration: `Login`, `Register`, `Notes` (list + editor + bulk + pagination + pin/archive), `Calendar`, `Settings`.
@@ -214,12 +214,12 @@ backend/
 
 ```
 frontend/src/
-├── main.jsx            bootstraps LangProvider + Router + App
+├── main.jsx            applies theme + lang, then mounts Router + App
 ├── App.jsx             route map, header, global shortcuts wiring
 ├── api.js              fetch wrapper + API client
 ├── theme.js            light / dark / system via data-theme attribute
-├── i18n.jsx            React Context, EN + RU, dotted keys with {name} interpolation
-├── stores/             notesStore · accountStore · sessionStore ·
+├── i18n.jsx            EN + RU catalogue, useLang(), dotted keys with {name} interpolation
+├── stores/             notesStore · accountStore · sessionStore · prefsStore ·
 │                       safeStorage · index.js (resetStores)
 ├── hooks/
 │   └── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
@@ -270,6 +270,14 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
   every update rather than written once at link time, so that reminders sent days later read the
   same way as the last answer did even for someone who switched their client language since.
 - **Theming** — `data-theme="light|dark"` on `<html>`; `system` resolves from `prefers-color-scheme`.
+- **Frontend state** — four Zustand stores. `notesStore` holds the list, its filters and the
+  selection; `accountStore` holds the reminder settings shared by `/notes` and `/settings`;
+  `sessionStore` holds the JWT and makes the session reactive; `prefsStore` holds language, theme and
+  one dismissed hint, persisted to the three legacy keys through a fan-out adapter because `persist`
+  otherwise owns exactly one storage entry per store. Async actions reload what they invalidated, so
+  no caller has to remember. What stays in `useState`: form drafts, the calendar's visible month, the
+  timer that dismisses the "saved" notice — state nobody else needs, plus one timer that must not
+  outlive its screen.
 - **Testing boundary** — backend uses SQLite in tests; any Postgres-specific SQL must stay behind SQLAlchemy or be called out. `claim_batch` uses `FOR UPDATE SKIP LOCKED`, which SQLite silently ignores — the locking behaviour is therefore asserted against the compiled Postgres SQL rather than by running two sessions.
 - **Bot commands** — `/today`, `/upcoming`, `/status`, `/pause`, `/resume`, `/help`, published with
   `setMyCommands` once per supported language and once for the language-less scope, which is what

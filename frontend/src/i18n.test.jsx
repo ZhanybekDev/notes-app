@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { LangProvider, MESSAGES, useLang } from './i18n.jsx';
+import { MESSAGES, useLang } from './i18n.jsx';
 
 function Probe() {
   const { lang, setLang, t } = useLang();
@@ -18,31 +18,19 @@ function Probe() {
 
 describe('i18n', () => {
   it('resolves English strings by default', () => {
-    render(
-      <LangProvider>
-        <Probe />
-      </LangProvider>
-    );
+    render(<Probe />);
     expect(screen.getByTestId('lang')).toHaveTextContent('en');
     expect(screen.getByTestId('title')).toHaveTextContent('Welcome back');
   });
 
   it('interpolates {count} placeholders', () => {
-    render(
-      <LangProvider>
-        <Probe />
-      </LangProvider>
-    );
+    render(<Probe />);
     expect(screen.getByTestId('count')).toHaveTextContent('Delete (3)');
   });
 
   it('switches language and persists to localStorage', async () => {
     const user = userEvent.setup();
-    render(
-      <LangProvider>
-        <Probe />
-      </LangProvider>
-    );
+    render(<Probe />);
     await act(() => user.click(screen.getByText('switch')));
     expect(screen.getByTestId('lang')).toHaveTextContent('ru');
     expect(screen.getByTestId('title')).toHaveTextContent('С возвращением');

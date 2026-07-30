@@ -3,10 +3,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import TagFilter from './TagFilter.jsx';
-import { LangProvider } from '../i18n.jsx';
 
 function renderWithLang(ui) {
-  return render(<LangProvider>{ui}</LangProvider>);
+  return render(ui);
 }
 
 describe('TagFilter', () => {

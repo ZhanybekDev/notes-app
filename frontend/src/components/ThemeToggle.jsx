@@ -1,19 +1,17 @@
-import { useState } from 'react';
-import { getThemePref, setThemePref } from '../theme.js';
 import { useLang } from '../i18n.jsx';
+import { usePrefsStore } from '../stores/prefsStore.js';
 
 const ORDER = ['light', 'dark', 'system'];
 const ICON = { light: '☀️', dark: '🌙', system: '🖥️' };
 
 export default function ThemeToggle() {
-  const [pref, setPref] = useState(getThemePref());
+  // Reads the one copy of the preference. It used to keep its own useState snapshot taken at mount,
+  // which is the duplication this migration exists to remove.
+  const pref = usePrefsStore((s) => s.theme);
+  const setTheme = usePrefsStore((s) => s.setTheme);
   const { t } = useLang();
 
-  const cycle = () => {
-    const next = ORDER[(ORDER.indexOf(pref) + 1) % ORDER.length];
-    setPref(next);
-    setThemePref(next);
-  };
+  const cycle = () => setTheme(ORDER[(ORDER.indexOf(pref) + 1) % ORDER.length]);
 
   const label = t(`theme.${pref}`);
 

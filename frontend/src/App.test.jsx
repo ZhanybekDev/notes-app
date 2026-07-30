@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import App from './App.jsx';
-import { LangProvider } from './i18n.jsx';
 import { api } from './api.js';
 import { useSessionStore } from './stores/sessionStore.js';
 
@@ -22,9 +21,7 @@ const SETTINGS = {
 function renderApp(path = '/notes') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <LangProvider>
-        <App />
-      </LangProvider>
+      <App />
     </MemoryRouter>,
   );
 }

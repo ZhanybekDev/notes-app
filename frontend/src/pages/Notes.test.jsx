@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import Notes from './Notes.jsx';
-import { LangProvider } from '../i18n.jsx';
 import { api } from '../api.js';
 
 const NOTES = [
@@ -24,9 +23,7 @@ const SETTINGS = {
 function renderNotes() {
   return render(
     <MemoryRouter>
-      <LangProvider>
-        <Notes />
-      </LangProvider>
+      <Notes />
     </MemoryRouter>,
   );
 }

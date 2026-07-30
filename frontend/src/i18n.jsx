@@ -1,7 +1,10 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 
-const STORAGE_KEY = 'notes_lang';
-export const LANGS = ['en', 'ru'];
+import { LANGS, usePrefsStore } from './stores/prefsStore.js';
+
+// Re-exported so callers keep importing the language list from the i18n module they already use.
+export { LANGS };
+
 
 export const MESSAGES = {
   en: {
@@ -322,17 +325,6 @@ export const MESSAGES = {
   },
 };
 
-function getInitialLang() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (LANGS.includes(saved)) return saved;
-  } catch {
-    // localStorage may be unavailable (private mode); fall through to defaults.
-  }
-  const browser = (navigator.language || 'en').slice(0, 2);
-  return LANGS.includes(browser) ? browser : 'en';
-}
-
 function resolve(dict, path) {
   const parts = path.split('.');
   let node = dict;
@@ -348,39 +340,41 @@ function interpolate(str, vars) {
   return str.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`));
 }
 
-const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k });
-
-export function LangProvider({ children }) {
-  const [lang, setLangState] = useState(getInitialLang);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('lang', lang);
-  }, [lang]);
-
-  const setLang = (next) => {
-    if (!LANGS.includes(next)) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // localStorage may be unavailable; continue in-memory.
-    }
-    setLangState(next);
-  };
-
-  const t = (key, vars) => {
-    const value = resolve(MESSAGES[lang], key);
-    if (value === undefined) {
-      const fallback = resolve(MESSAGES.en, key);
-      return interpolate(fallback ?? key, vars);
-    }
-    return interpolate(value, vars);
-  };
-
-  return (
-    <LangContext.Provider value={{ lang, setLang, t }}>{children}</LangContext.Provider>
-  );
+/** Resolve one key for one language, with English as the fallback. */
+export function translate(lang, key, vars) {
+  const value = resolve(MESSAGES[lang], key);
+  if (value === undefined) {
+    const fallback = resolve(MESSAGES.en, key);
+    return interpolate(fallback ?? key, vars);
+  }
+  return interpolate(value, vars);
 }
 
+/**
+ * Same shape as before — `{ lang, setLang, t }` — so none of the 14 call sites change.
+ *
+ * The two selectors return a string and a stable action, never a fresh object: a selector building
+ * `{ lang, setLang, t }` would hand zustand a new reference on every render and turn this into
+ * "Maximum update depth exceeded" rather than a wasted render.
+ */
 export function useLang() {
-  return useContext(LangContext);
+  const lang = usePrefsStore((s) => s.lang);
+  const setLang = usePrefsStore((s) => s.setLang);
+  const t = useMemo(() => (key, vars) => translate(lang, key, vars), [lang]);
+  return { lang, setLang, t };
+}
+
+/**
+ * Sets `<html lang>` once and follows changes.
+ *
+ * Called before the first render for the same reason `initTheme()` is: `subscribe` fires only on a
+ * change, so a subscription alone would leave the attribute at its initial value until the user
+ * switched languages.
+ */
+export function initLang() {
+  const apply = (lang) => document.documentElement.setAttribute('lang', lang);
+  apply(usePrefsStore.getState().lang);
+  usePrefsStore.subscribe((state, previous) => {
+    if (state.lang !== previous.lang) apply(state.lang);
+  });
 }

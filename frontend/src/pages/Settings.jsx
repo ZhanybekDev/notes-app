@@ -4,10 +4,10 @@ import { api } from '../api.js';
 import { useLang } from '../i18n.jsx';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
 import { useAccountStore } from '../stores/accountStore.js';
+import { usePrefsStore } from '../stores/prefsStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 
 const SAVED_NOTICE_MS = 2500;
-const TZ_DISMISS_KEY = 'notes_tz_suggestion_dismissed';
 
 function listTimeZones(current) {
   const supported =
@@ -20,14 +20,6 @@ function browserTimeZone() {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
   } catch {
     return null;
-  }
-}
-
-function readDismissed() {
-  try {
-    return localStorage.getItem(TZ_DISMISS_KEY) === '1';
-  } catch {
-    return false;
   }
 }
 
@@ -47,9 +39,10 @@ export default function Settings() {
 
   // Draft of the time input: unsaved keystrokes are this screen's state, not the app's.
   const logout = useSessionStore((s) => s.logout);
+  const tzDismissed = usePrefsStore((s) => s.tzSuggestionDismissed);
+  const dismissTzSuggestion = usePrefsStore((s) => s.dismissTzSuggestion);
 
   const [timeDraft, setTimeDraft] = useState('');
-  const [tzDismissed, setTzDismissed] = useState(readDismissed);
 
   const timeZones = useMemo(() => listTimeZones(prefs?.timezone ?? 'UTC'), [prefs?.timezone]);
   const suggestedZone = useMemo(() => browserTimeZone(), []);
@@ -61,15 +54,6 @@ export default function Settings() {
     Boolean(suggestedZone) &&
     suggestedZone !== 'UTC' &&
     !tzDismissed;
-
-  const dismissTzSuggestion = () => {
-    try {
-      localStorage.setItem(TZ_DISMISS_KEY, '1');
-    } catch {
-      // Private mode; the suggestion simply returns next time.
-    }
-    setTzDismissed(true);
-  };
 
   useEffect(() => {
     // Serves the cached settings straight away and revalidates: the bot can change them behind

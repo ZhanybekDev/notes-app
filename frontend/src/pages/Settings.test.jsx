@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import Settings from './Settings.jsx';
-import { LangProvider } from '../i18n.jsx';
 import { api } from '../api.js';
 
 const LINKED = {
@@ -28,9 +27,7 @@ const UNLINKED = {
 function renderSettings() {
   return render(
     <MemoryRouter>
-      <LangProvider>
-        <Settings />
-      </LangProvider>
+      <Settings />
     </MemoryRouter>
   );
 }

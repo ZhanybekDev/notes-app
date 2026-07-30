@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 import NoteEditor from './NoteEditor.jsx';
-import { LangProvider } from '../i18n.jsx';
 
 const PREFS = {
   timezone: 'Asia/Bishkek',
@@ -16,9 +15,7 @@ const PREFS = {
 function renderEditor(props) {
   return render(
     <MemoryRouter>
-      <LangProvider>
-        <NoteEditor note={null} onSave={vi.fn()} {...props} />
-      </LangProvider>
+      <NoteEditor note={null} onSave={vi.fn()} {...props} />
     </MemoryRouter>
   );
 }
