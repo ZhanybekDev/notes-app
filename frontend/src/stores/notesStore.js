@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 import { api } from '../api.js';
+import { useUiStore } from './uiStore.js';
+
+// One direction only: domain stores reach into the UI store to show a failure, and `uiStore` imports
+// nothing, so there is no cycle. `error` below stays the source of truth — the toast is how a failure
+// is shown, not where it is kept.
+function report(message) {
+  useUiStore.getState().notify(message, 'error');
+}
 
 export const PAGE_SIZE = 20;
 
@@ -12,6 +20,7 @@ const initialState = {
   search: '',
   activeTag: null,
   view: 'active',
+  status: 'idle', // idle | loading | ready | error
   offset: 0,
   bulkMode: false,
   selectedIds: new Set(),
@@ -51,6 +60,9 @@ export const useNotesStore = create((set, get) => ({
   load: async (nextOffset = 0, append = false) => {
     const { search, activeTag, view } = get();
     const ticket = ++latestRequest;
+    // An already-loaded list stays on screen while it refreshes, the way the account store does it:
+    // blanking it out on every keystroke would be worse than a slightly stale list.
+    set({ status: get().items.length ? 'ready' : 'loading' });
     try {
       const [page, tags] = await Promise.all([
         api.listNotes({
@@ -64,6 +76,7 @@ export const useNotesStore = create((set, get) => ({
       ]);
       if (ticket !== latestRequest) return;
       set((prev) => ({
+        status: 'ready',
         total: page.total,
         items: append ? [...prev.items, ...page.items] : page.items,
         tags,
@@ -75,7 +88,8 @@ export const useNotesStore = create((set, get) => ({
       }));
     } catch (err) {
       if (ticket !== latestRequest) return;
-      set({ error: err.message });
+      set({ status: 'error', error: err.message });
+      report(err.message);
     }
   },
 
@@ -114,6 +128,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
+      report(err.message);
     }
   },
 
@@ -125,6 +140,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
+      report(err.message);
     }
   },
 
@@ -135,6 +151,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
+      report(err.message);
     }
   },
 
@@ -149,6 +166,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
+      report(err.message);
     }
   },
 
@@ -161,6 +179,7 @@ export const useNotesStore = create((set, get) => ({
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
+      report(err.message);
     }
   },
 

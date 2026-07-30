@@ -513,3 +513,111 @@ kbd {
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
+
+/* ============================== Toasts ============================== */
+/*
+ * One positioned parent, two live regions inside it. The regions are layout-transparent (they are
+ * `display: contents` in effect via flex on the parent) so successes and failures form a single
+ * visual stack even though the screen reader sees two containers.
+ */
+.toaster {
+  position: fixed;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.toast-region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 260px;
+  max-width: 360px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-base);
+  color: var(--text);
+  pointer-events: auto;
+  animation: toast-in var(--duration) ease-out;
+}
+
+.toast-error { border-left-color: var(--danger); }
+
+.toast-status { border-left-color: var(--success); }
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  line-height: var(--leading-normal);
+}
+
+.toast-close {
+  flex: none;
+  padding: 0 var(--space-1);
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: var(--text-md);
+  line-height: 1;
+}
+
+.toast-close:hover { color: var(--text); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(var(--space-2)); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================== Skeletons ============================== */
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-left: 2px solid transparent;
+}
+
+.skeleton-row + .skeleton-row { border-top: 1px solid var(--border); }
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ============================== Failed load ============================== */
+.list-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.list-error .btn { margin-top: var(--space-2); }

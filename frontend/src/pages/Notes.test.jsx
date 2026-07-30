@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import Notes from './Notes.jsx';
+import Toaster from '../components/Toaster.jsx';
 import { api } from '../api.js';
+import { useUiStore } from '../stores/uiStore.js';
 
 const NOTES = [
   { id: 1, title: 'Groceries', content: 'milk', tags: ['home'], note_date: null },
@@ -20,10 +22,13 @@ const SETTINGS = {
   bot_configured: true,
 };
 
+// <Toaster /> is mounted here for the same reason App.jsx mounts it: failures reach the reader
+// through it, so a test rendering the page alone could not see them at all.
 function renderNotes() {
   return render(
     <MemoryRouter>
       <Notes />
+      <Toaster />
     </MemoryRouter>,
   );
 }
@@ -137,22 +142,39 @@ describe('Notes page on the store', () => {
     await waitFor(() => expect(bulk).toHaveBeenCalledWith([1]));
   });
 
-  it('shows a failed request as a page error', async () => {
+  it('reports a failed request as an assertive toast', async () => {
     list.mockRejectedValue(new Error('offline'));
     renderNotes();
-    expect(await screen.findByText('offline')).toBeInTheDocument();
+
+    const alerts = await screen.findByTestId('toast-region-alert');
+    expect(alerts).toHaveTextContent('offline');
   });
 
-  it('does not carry a stale error into the next visit', async () => {
-    list.mockRejectedValueOnce(new Error('offline'));
+  it('leaves a failure block with a retry in the list, not just a toast', async () => {
+    list.mockRejectedValue(new Error('offline'));
+    renderNotes();
+
+    // The toast leaves after eight seconds. If nothing replaced the empty list, the screen would
+    // then claim the account has no notes.
+    expect(await screen.findByText("Couldn't load")).toBeInTheDocument();
+    expect(screen.queryByText('No notes yet')).not.toBeInTheDocument();
+
+    list.mockResolvedValue({ items: NOTES, total: NOTES.length });
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Groceries')).toBeInTheDocument();
+  });
+
+  it('does not raise a second toast for the same failure on a remount', async () => {
+    list.mockRejectedValue(new Error('offline'));
     const { unmount } = renderNotes();
-    expect(await screen.findByText('offline')).toBeInTheDocument();
+    await screen.findByTestId('toast-region-alert');
+    await waitFor(() => expect(useUiStore.getState().toasts).toHaveLength(1));
     unmount();
 
-    // The error used to be page state and died with the page; in a store it would otherwise sit
-    // above a freshly loaded list until the tab was reloaded.
+    // Checking for absent text would pass for the wrong reason — the toast may simply have expired.
+    // What matters is that the queue does not grow.
     renderNotes();
-    await screen.findByText('Groceries');
-    expect(screen.queryByText('offline')).not.toBeInTheDocument();
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    expect(useUiStore.getState().toasts).toHaveLength(1);
   });
 });

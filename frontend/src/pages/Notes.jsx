@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import NoteList from '../components/NoteList.jsx';
 import NoteEditor from '../components/NoteEditor.jsx';
 import TagFilter from '../components/TagFilter.jsx';
+import { SkeletonList } from '../components/Skeleton.jsx';
+import { useDelayedFlag } from '../hooks/useDelayedFlag.js';
 import { useLang } from '../i18n.jsx';
 import { useAccountStore } from '../stores/accountStore.js';
 import { useNotesStore } from '../stores/notesStore.js';
@@ -19,7 +21,7 @@ export default function Notes({ registerAction }) {
   const view = useNotesStore((s) => s.view);
   const bulkMode = useNotesStore((s) => s.bulkMode);
   const selectedIds = useNotesStore((s) => s.selectedIds);
-  const error = useNotesStore((s) => s.error);
+  const status = useNotesStore((s) => s.status);
 
   const load = useNotesStore((s) => s.load);
   const loadMore = useNotesStore((s) => s.loadMore);
@@ -44,6 +46,11 @@ export default function Notes({ registerAction }) {
   const reminderPrefs = useAccountStore((s) => s.prefs);
   const reminderPrefsFailed = useAccountStore((s) => s.status === 'error');
   const loadPrefs = useAccountStore((s) => s.load);
+
+  // Failures reach the reader as a toast; what stays on screen is the list's own state.
+  const failed = status === 'error';
+  const showSkeleton = useDelayedFlag(status === 'loading');
+  const retry = useCallback(() => load(0, false), [load]);
 
   const searchRef = useRef(null);
   const editorRef = useRef(null);
@@ -147,16 +154,22 @@ export default function Notes({ registerAction }) {
           )}
         </div>
         <TagFilter tags={tags} active={activeTag} onChange={setActiveTag} />
-        <NoteList
-          notes={items}
-          selectedId={selected?.id}
-          onSelect={select}
-          bulkMode={bulkMode}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleSelect}
-          filtered={Boolean(search || activeTag)}
-          archivedView={view === 'archived'}
-        />
+        {showSkeleton ? (
+          <SkeletonList />
+        ) : (
+          <NoteList
+            notes={items}
+            selectedId={selected?.id}
+            onSelect={select}
+            bulkMode={bulkMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            filtered={Boolean(search || activeTag)}
+            archivedView={view === 'archived'}
+            failed={failed}
+            onRetry={retry}
+          />
+        )}
         {hasMore && (
           <button className="btn btn-ghost load-more" onClick={loadMore} title={t('tips.loadMore')}>
             {t('notes.loadMore')} ({items.length} {t('notes.of')} {total})
@@ -164,7 +177,6 @@ export default function Notes({ registerAction }) {
         )}
       </aside>
       <section className="content-pane">
-        {error && <div className="error content-error">{error}</div>}
         {showEditor ? (
           <NoteEditor
             ref={editorRef}

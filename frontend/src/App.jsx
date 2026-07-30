@@ -8,6 +8,7 @@ import Settings from './pages/Settings.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import LanguageToggle from './components/LanguageToggle.jsx';
 import HelpOverlay from './components/HelpOverlay.jsx';
+import Toaster from './components/Toaster.jsx';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useLang } from './i18n.jsx';
 import { useShortcuts } from './hooks/useShortcuts.js';
@@ -111,6 +112,7 @@ export default function App() {
         </Routes>
       </main>
       <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <Toaster />
     </div>
   );
 }

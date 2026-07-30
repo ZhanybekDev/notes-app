@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 import { api } from '../api.js';
+import { translate } from '../i18n.jsx';
+import { usePrefsStore } from './prefsStore.js';
+import { useUiStore } from './uiStore.js';
+
+function notify(message, kind) {
+  useUiStore.getState().notify(message, kind);
+}
 
 const initialState = {
   prefs: null,
@@ -35,6 +42,7 @@ export const useAccountStore = create((set, get) => ({
         return prefs;
       } catch (err) {
         set({ status: 'error', error: err.message });
+        notify(err.message, 'error');
         return null;
       } finally {
         set({ inflight: null });
@@ -50,11 +58,13 @@ export const useAccountStore = create((set, get) => ({
     try {
       const prefs = await api.updateSettings(patch);
       set({ prefs, status: 'ready', saved: true });
+      notify(translate(usePrefsStore.getState().lang, 'settings.settingsSaved'), 'status');
       return prefs;
     } catch (err) {
       // The already-loaded settings survive a failed PATCH: the screen keeps showing what the
       // server last confirmed rather than blanking out.
       set({ error: err.message });
+      notify(err.message, 'error');
       return null;
     }
   },
@@ -68,6 +78,7 @@ export const useAccountStore = create((set, get) => ({
       return prefs;
     } catch (err) {
       set({ error: err.message });
+      notify(err.message, 'error');
       return null;
     }
   },

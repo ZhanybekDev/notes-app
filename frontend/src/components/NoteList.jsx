@@ -9,8 +9,25 @@ export default function NoteList({
   onToggleSelect,
   filtered = false,
   archivedView = false,
+  failed = false,
+  onRetry,
 }) {
   const { t } = useLang();
+
+  // A failed load has no notes either, and without its own branch it would render as "no notes yet" —
+  // a lie about the data. The toast reports the event and leaves; this block holds the state.
+  if (failed && !notes.length) {
+    return (
+      <div className="list-error">
+        <p className="list-empty-title">{t('notes.loadFailedTitle')}</p>
+        <p className="list-empty-hint">{t('notes.loadFailedHint')}</p>
+        <button type="button" className="btn btn-ghost" onClick={onRetry}>
+          {t('notes.retry')}
+        </button>
+      </div>
+    );
+  }
+
   if (!notes.length) {
     // Three ways to have nothing to show, and the user needs to know which one:
     // a query that matched nothing, an empty archive, and an account with no notes.

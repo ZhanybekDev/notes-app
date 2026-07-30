@@ -219,12 +219,13 @@ frontend/src/
 ├── api.js              fetch wrapper + API client
 ├── theme.js            light / dark / system via data-theme attribute
 ├── i18n.jsx            EN + RU catalogue, useLang(), dotted keys with {name} interpolation
-├── stores/             notesStore · accountStore · sessionStore · prefsStore ·
+├── stores/             notesStore · accountStore · sessionStore · prefsStore · uiStore ·
 │                       safeStorage · index.js (resetStores)
 ├── hooks/
-│   └── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
+│   ├── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
+│   └── useDelayedFlag.js  raises a flag only if the wait outlasts 300ms
 ├── components/         NoteEditor · NoteList · TagFilter ·
-│                       ThemeToggle · LanguageToggle ·
+│                       ThemeToggle · LanguageToggle · Toaster · Skeleton ·
 │                       MarkdownToolbar · HelpOverlay
 └── pages/              Login · Register · Notes · Calendar · Settings
 ```
@@ -270,15 +271,22 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
   every update rather than written once at link time, so that reminders sent days later read the
   same way as the last answer did even for someone who switched their client language since.
 - **Theming** — `data-theme="light|dark"` on `<html>`; `system` resolves from `prefers-color-scheme`.
-- **Frontend state** — four Zustand stores. `notesStore` holds the list, its filters and the
-  selection; `accountStore` holds the reminder settings shared by `/notes` and `/settings`;
+- **Frontend state** — five Zustand stores. `notesStore` holds the list, its filters, its request
+  status and the selection; `accountStore` holds the reminder settings shared by `/notes` and
+  `/settings`; `uiStore` holds the toast queue and nothing else — the timers live in `<Toaster />`,
+  because a `setTimeout` owned by a store outlives both the page that caused it and `resetStores()`;
   `sessionStore` holds the JWT and makes the session reactive; `prefsStore` holds language, theme and
   one dismissed hint, persisted to the three legacy keys through a fan-out adapter because `persist`
   otherwise owns exactly one storage entry per store. A language the user never picked is not
   written at all — `lang: null` means "follow the browser", read through `selectLang`. Async actions reload what they invalidated, so
-  no caller has to remember. What stays in `useState`: form drafts, the calendar's visible month, the
-  timer that dismisses the "saved" notice — state nobody else needs, plus one timer that must not
-  outlive its screen.
+  no caller has to remember. Domain stores report a failure by calling `uiStore.notify` — one
+  direction only, `uiStore` imports nothing — while keeping their own `error` field as the source of
+  truth: the toast is how a failure is shown, not where it is kept. A background failure therefore
+  appears twice on purpose, as an event (the toast, which leaves) and as a state (the failure block in
+  the list or the calendar grid, which stays, with a retry). Form errors stay next to their field: a
+  toast about a wrong password would expire while it was being read. What stays in `useState`: form
+  drafts, the calendar's visible month, the timer that dismisses the "saved" notice — state nobody
+  else needs, plus one timer that must not outlive its screen.
 - **Testing boundary** — backend uses SQLite in tests; any Postgres-specific SQL must stay behind SQLAlchemy or be called out. `claim_batch` uses `FOR UPDATE SKIP LOCKED`, which SQLite silently ignores — the locking behaviour is therefore asserted against the compiled Postgres SQL rather than by running two sessions.
 - **Bot commands** — `/today`, `/upcoming`, `/status`, `/pause`, `/resume`, `/help`, published with
   `setMyCommands` once per supported language and once for the language-less scope, which is what

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { useLang } from '../i18n.jsx';
+import { useUiStore } from '../stores/uiStore.js';
 
 function monthMatrix(year, month) {
   const first = new Date(year, month - 1, 1);
@@ -32,16 +33,24 @@ export default function Calendar() {
   const [days, setDays] = useState([]);
   const [notesForDay, setNotesForDay] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
-  const [error, setError] = useState(null);
+  // A failed month has no day badges, so without its own state the grid would read as "no notes this
+  // month" — and once the toast leaves, nothing on screen would say otherwise.
+  const [failed, setFailed] = useState(false);
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setFailed(false);
     api
       .calendar(year, month)
       .then((d) => { if (alive) setDays(d); })
-      .catch((e) => { if (alive) setError(e.message); });
+      .catch((e) => {
+        if (!alive) return;
+        setFailed(true);
+        useUiStore.getState().notify(e.message, 'error');
+      });
     return () => { alive = false; };
-  }, [year, month]);
+  }, [year, month, reloads]);
 
   const counts = useMemo(() => {
     const m = new Map();
@@ -60,7 +69,7 @@ export default function Calendar() {
       const fetched = await Promise.all(day.note_ids.map((id) => api.getNote(id)));
       setNotesForDay(fetched);
     } catch (err) {
-      setError(err.message);
+      useUiStore.getState().notify(err.message, 'error');
     }
   };
 
@@ -93,7 +102,15 @@ export default function Calendar() {
           <button onClick={next} title={t('tips.calendarNext')} aria-label={t('calendar.next')}>›</button>
         </div>
       </header>
-      {error && <div className="error" style={{ marginBottom: '1rem' }}>{error}</div>}
+      {failed ? (
+        <div className="list-error">
+          <p className="list-empty-title">{t('notes.loadFailedTitle')}</p>
+          <p className="list-empty-hint">{t('notes.loadFailedHint')}</p>
+          <button type="button" className="btn btn-ghost" onClick={() => setReloads((n) => n + 1)}>
+            {t('notes.retry')}
+          </button>
+        </div>
+      ) : (
       <div className="cal-grid">
         {weekdays.map((w) => <div key={w} className="cal-weekday">{w}</div>)}
         {cells.map((day, i) => {
@@ -116,6 +133,7 @@ export default function Calendar() {
           );
         })}
       </div>
+      )}
       {selectedDate && (
         <div className="day-notes">
           <h3>{t('calendar.notesOn')} {selectedDate}</h3>
