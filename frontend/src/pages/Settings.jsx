@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { clearToken } from '../auth.js';
 import { useLang } from '../i18n.jsx';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
+import { useAccountStore } from '../stores/accountStore.js';
 
 const SAVED_NOTICE_MS = 2500;
 const TZ_DISMISS_KEY = 'notes_tz_suggestion_dismissed';
@@ -34,9 +35,17 @@ export default function Settings() {
   const { t } = useLang();
   const navigate = useNavigate();
 
-  const [prefs, setPrefs] = useState(null);
-  const [prefsError, setPrefsError] = useState(null);
-  const [prefsSaved, setPrefsSaved] = useState(false);
+  const prefs = useAccountStore((s) => s.prefs);
+  const prefsError = useAccountStore((s) => s.error);
+  const prefsSaved = useAccountStore((s) => s.saved);
+  const loadPrefs = useAccountStore((s) => s.load);
+  const patchStore = useAccountStore((s) => s.patch);
+  const unlinkTelegram = useAccountStore((s) => s.unlink);
+  const setPrefs = useAccountStore((s) => s.setPrefs);
+  const clearError = useAccountStore((s) => s.clearError);
+  const clearSaved = useAccountStore((s) => s.clearSaved);
+
+  // Draft of the time input: unsaved keystrokes are this screen's state, not the app's.
   const [timeDraft, setTimeDraft] = useState('');
   const [tzDismissed, setTzDismissed] = useState(readDismissed);
 
@@ -61,35 +70,18 @@ export default function Settings() {
   };
 
   useEffect(() => {
-    let cancelled = false;
-    api
-      .getSettings()
-      .then((data) => {
-        if (cancelled) return;
-        setPrefs(data);
-        setTimeDraft(data.reminder_time.slice(0, 5));
-      })
-      .catch((err) => {
-        if (!cancelled) setPrefsError(err.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    // Serves the cached settings straight away and revalidates: the bot can change them behind
+    // this tab's back, so a load-once cache would show a stale toggle.
+    loadPrefs().then((next) => {
+      if (next) setTimeDraft(next.reminder_time.slice(0, 5));
+    });
+  }, [loadPrefs]);
 
   const patchPrefs = async (patch) => {
-    setPrefsError(null);
-    setPrefsSaved(false);
-    try {
-      const next = await api.updateSettings(patch);
-      setPrefs(next);
-      // Only resync the draft when this patch was about the time. Otherwise changing the time
-      // zone would quietly discard an edit the user had typed but not yet committed.
-      if ('reminder_time' in patch) setTimeDraft(next.reminder_time.slice(0, 5));
-      setPrefsSaved(true);
-    } catch (err) {
-      setPrefsError(err.message);
-    }
+    const next = await patchStore(patch);
+    // Only resync the draft when this patch was about the time. Otherwise changing the time
+    // zone would quietly discard an edit the user had typed but not yet committed.
+    if (next && 'reminder_time' in patch) setTimeDraft(next.reminder_time.slice(0, 5));
   };
 
   const {
@@ -104,24 +96,18 @@ export default function Settings() {
     },
   });
 
-  // The confirmation used to sit there for the rest of the session.
+  // The confirmation used to sit there for the rest of the session. The timer belongs to the
+  // screen: in the store it would outlive both the page and resetStores() in tests.
   useEffect(() => {
     if (!prefsSaved) return undefined;
-    const id = setTimeout(() => setPrefsSaved(false), SAVED_NOTICE_MS);
+    const id = setTimeout(clearSaved, SAVED_NOTICE_MS);
     return () => clearTimeout(id);
-  }, [prefsSaved]);
+  }, [prefsSaved, clearSaved]);
 
   const disconnectTelegram = async () => {
     if (!window.confirm(t('settings.confirmDisconnect'))) return;
-    setPrefsError(null);
-    try {
-      await api.unlinkTelegram();
-      const next = await api.getSettings();
-      setPrefs(next);
-      setTimeDraft(next.reminder_time.slice(0, 5));
-    } catch (err) {
-      setPrefsError(err.message);
-    }
+    const next = await unlinkTelegram();
+    if (next) setTimeDraft(next.reminder_time.slice(0, 5));
   };
 
   const [currentPw, setCurrentPw] = useState('');
@@ -262,7 +248,7 @@ export default function Settings() {
                     type="button"
                     className="btn btn-primary"
                     onClick={() => {
-                      setPrefsError(null);
+                      clearError();
                       connectTelegram();
                     }}
                     disabled={

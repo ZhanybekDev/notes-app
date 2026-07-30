@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../api.js';
+import { useEffect, useMemo, useRef } from 'react';
 import NoteList from '../components/NoteList.jsx';
 import NoteEditor from '../components/NoteEditor.jsx';
 import TagFilter from '../components/TagFilter.jsx';
 import { useLang } from '../i18n.jsx';
+import { useAccountStore } from '../stores/accountStore.js';
 import { useNotesStore } from '../stores/notesStore.js';
 
 export default function Notes({ registerAction }) {
@@ -38,9 +38,12 @@ export default function Notes({ registerAction }) {
   const toggleSelect = useNotesStore((s) => s.toggleSelect);
   const selectAll = useNotesStore((s) => s.selectAll);
 
-  // Fetched here rather than in NoteEditor: components stay presentational, pages fetch.
-  const [reminderPrefs, setReminderPrefs] = useState(null);
-  const [reminderPrefsFailed, setReminderPrefsFailed] = useState(false);
+  // Read here rather than in NoteEditor: components stay presentational, pages fetch. "Still
+  // loading" (null) and "could not load" are different states — the hint by the date field stays
+  // quiet in the first case and explains itself in the second.
+  const reminderPrefs = useAccountStore((s) => s.prefs);
+  const reminderPrefsFailed = useAccountStore((s) => s.status === 'error');
+  const loadPrefs = useAccountStore((s) => s.load);
 
   const searchRef = useRef(null);
   const editorRef = useRef(null);
@@ -50,21 +53,8 @@ export default function Notes({ registerAction }) {
   }, [load]);
 
   useEffect(() => {
-    let cancelled = false;
-    api
-      .getSettings()
-      .then((prefs) => {
-        if (!cancelled) setReminderPrefs(prefs);
-      })
-      .catch(() => {
-        // Reported next to the date field rather than as a page-level error: the reminder hint
-        // is secondary, and failing it should not read as "the notes list is broken".
-        if (!cancelled) setReminderPrefsFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    loadPrefs();
+  }, [loadPrefs]);
 
   useEffect(() => {
     registerAction?.('newNote', startCreating);

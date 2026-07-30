@@ -215,7 +215,7 @@ frontend/src/
 ├── auth.js             JWT stored in localStorage
 ├── theme.js            light / dark / system via data-theme attribute
 ├── i18n.jsx            React Context, EN + RU, dotted keys with {name} interpolation
-├── stores/             notesStore · index.js (resetStores)
+├── stores/             notesStore · accountStore · index.js (resetStores)
 ├── hooks/
 │   └── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
 ├── components/         NoteEditor · NoteList · TagFilter ·

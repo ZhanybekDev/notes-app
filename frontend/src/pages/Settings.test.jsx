@@ -289,3 +289,35 @@ describe('Settings — Telegram reminders', () => {
     expect(screen.queryByRole('button', { name: 'Use it' })).not.toBeInTheDocument();
   });
 });
+
+describe('Settings — shared with the rest of the app', () => {
+  it('renders from the cached settings on a second visit, with no loading placeholder', async () => {
+    vi.spyOn(api, 'getSettings').mockResolvedValue(LINKED);
+
+    const { unmount } = renderSettings();
+    await screen.findByDisplayValue('Asia/Bishkek');
+    unmount();
+
+    renderSettings();
+
+    // Nothing is awaited here on purpose: the store already holds the settings, so the screen has
+    // them on its very first render instead of showing the "…" placeholder again.
+    expect(screen.queryByText('…')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Asia/Bishkek')).toBeInTheDocument();
+  });
+
+  it('picks up a change made outside the tab, such as /pause in the bot', async () => {
+    const get = vi
+      .spyOn(api, 'getSettings')
+      .mockResolvedValueOnce(LINKED)
+      .mockResolvedValue({ ...LINKED, notifications_enabled: false });
+
+    const { unmount } = renderSettings();
+    expect(await screen.findByRole('checkbox')).toBeChecked();
+    unmount();
+
+    renderSettings();
+    await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeChecked());
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+});
