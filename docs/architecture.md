@@ -26,7 +26,7 @@ graph LR
 | `db`       | Postgres 16                                        | 5432 | Durable storage                             |
 | `backend`  | Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, JWT | 8000 | REST API, auth, data access                 |
 | `worker`   | Python 3.11, same image as `backend`               | —    | Telegram long polling, reminder delivery    |
-| `frontend` | React 18, Vite, React Router                       | 5173 | SPA; dev server proxies `/api` to `backend` |
+| `frontend` | React 18, Vite, React Router, Zustand              | 5173 | SPA; dev server proxies `/api` to `backend` |
 
 All four are orchestrated by `docker-compose.yml`. The frontend talks to the backend through the Vite dev proxy — there is no direct browser → backend call in dev.
 
@@ -87,7 +87,9 @@ graph TD
     APP --> HOOKS[hooks/useShortcuts]
     APP --> HELP[HelpOverlay]
     PAGES --> COMP["components/*"]
-    PAGES --> API[api.js]
+    PAGES --> STORES["stores/*"]
+    STORES --> API[api.js]
+    PAGES --> API
     COMP --> API
     COMP --> I18N[i18n.jsx]
     PAGES --> I18N
@@ -105,6 +107,7 @@ graph TD
 - **`hooks/useShortcuts.js`** — global `keydown` listener; ignores editable targets except for `Cmd/Ctrl+S`.
 - **`components/*`** — presentational + small behavior: `NoteEditor` (draft state + markdown toolbar), `NoteList` (virtualized-ready row), `TagFilter`, `ThemeToggle`, `LanguageToggle`, `MarkdownToolbar`, `HelpOverlay`.
 - **`pages/*`** — screens with data-fetching and orchestration: `Login`, `Register`, `Notes` (list + editor + bulk + pagination + pin/archive), `Calendar`, `Settings`.
+- **`stores/*`** — Zustand stores holding state shared beyond one screen, plus the async actions that own it. A mutation reloads what it invalidated, so no caller has to remember. Stores are headless: no `window`, no DOM, so they are unit-tested without React. `index.js` exports `resetStores()`, which the test setup calls after every test because a store is a singleton for the whole test process. Local state that nobody shares — form drafts, the calendar's visible month — stays in `useState` on purpose.
 
 ### Dependency rules worth keeping
 
@@ -212,6 +215,7 @@ frontend/src/
 ├── auth.js             JWT stored in localStorage
 ├── theme.js            light / dark / system via data-theme attribute
 ├── i18n.jsx            React Context, EN + RU, dotted keys with {name} interpolation
+├── stores/             notesStore · index.js (resetStores)
 ├── hooks/
 │   └── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
 ├── components/         NoteEditor · NoteList · TagFilter ·

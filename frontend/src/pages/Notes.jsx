@@ -1,53 +1,49 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import NoteList from '../components/NoteList.jsx';
 import NoteEditor from '../components/NoteEditor.jsx';
 import TagFilter from '../components/TagFilter.jsx';
 import { useLang } from '../i18n.jsx';
-
-const PAGE_SIZE = 20;
+import { useNotesStore } from '../stores/notesStore.js';
 
 export default function Notes({ registerAction }) {
   const { t } = useLang();
-  const [items, setItems] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [tags, setTags] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [search, setSearch] = useState('');
-  const [activeTag, setActiveTag] = useState(null);
-  const [view, setView] = useState('active'); // 'active' | 'archived'
-  const [offset, setOffset] = useState(0);
-  const [bulkMode, setBulkMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [error, setError] = useState(null);
+
+  const items = useNotesStore((s) => s.items);
+  const total = useNotesStore((s) => s.total);
+  const tags = useNotesStore((s) => s.tags);
+  const selected = useNotesStore((s) => s.selected);
+  const creating = useNotesStore((s) => s.creating);
+  const search = useNotesStore((s) => s.search);
+  const activeTag = useNotesStore((s) => s.activeTag);
+  const view = useNotesStore((s) => s.view);
+  const bulkMode = useNotesStore((s) => s.bulkMode);
+  const selectedIds = useNotesStore((s) => s.selectedIds);
+  const error = useNotesStore((s) => s.error);
+
+  const load = useNotesStore((s) => s.load);
+  const loadMore = useNotesStore((s) => s.loadMore);
+  const setSearch = useNotesStore((s) => s.setSearch);
+  const setActiveTag = useNotesStore((s) => s.setActiveTag);
+  const setView = useNotesStore((s) => s.setView);
+  const select = useNotesStore((s) => s.select);
+  const startCreating = useNotesStore((s) => s.startCreating);
+  const cancel = useNotesStore((s) => s.cancel);
+  const save = useNotesStore((s) => s.save);
+  const remove = useNotesStore((s) => s.remove);
+  const setPin = useNotesStore((s) => s.setPin);
+  const setArchive = useNotesStore((s) => s.setArchive);
+  const removeSelected = useNotesStore((s) => s.bulkDelete);
+  const toggleBulk = useNotesStore((s) => s.toggleBulk);
+  const toggleSelect = useNotesStore((s) => s.toggleSelect);
+  const selectAll = useNotesStore((s) => s.selectAll);
+
   // Fetched here rather than in NoteEditor: components stay presentational, pages fetch.
   const [reminderPrefs, setReminderPrefs] = useState(null);
   const [reminderPrefsFailed, setReminderPrefsFailed] = useState(false);
 
   const searchRef = useRef(null);
   const editorRef = useRef(null);
-
-  const load = useCallback(async (nextOffset = 0, append = false) => {
-    try {
-      const [page, ts] = await Promise.all([
-        api.listNotes({
-          q: search,
-          tag: activeTag,
-          archived: view === 'archived',
-          limit: PAGE_SIZE,
-          offset: nextOffset,
-        }),
-        api.tags(),
-      ]);
-      setTotal(page.total);
-      setItems((prev) => (append ? [...prev, ...page.items] : page.items));
-      setTags(ts);
-      setOffset(nextOffset);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [search, activeTag, view]);
 
   useEffect(() => {
     load(0, false);
@@ -71,7 +67,7 @@ export default function Notes({ registerAction }) {
   }, []);
 
   useEffect(() => {
-    registerAction?.('newNote', () => { setCreating(true); setSelected(null); });
+    registerAction?.('newNote', startCreating);
     registerAction?.('focusSearch', () => searchRef.current?.focus());
     registerAction?.('save', () => editorRef.current?.submit());
     return () => {
@@ -79,88 +75,14 @@ export default function Notes({ registerAction }) {
       registerAction?.('focusSearch', null);
       registerAction?.('save', null);
     };
-  }, [registerAction]);
+  }, [registerAction, startCreating]);
 
-  const onSave = async (data) => {
-    try {
-      if (selected) {
-        const updated = await api.updateNote(selected.id, data);
-        setSelected(updated);
-      } else {
-        const created = await api.createNote(data);
-        setSelected(created);
-        setCreating(false);
-      }
-      await load(0, false);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const onDelete = async (id) => {
-    try {
-      await api.deleteNote(id);
-      setSelected(null);
-      await load(0, false);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const onPin = async (note, pin) => {
-    try {
-      const updated = pin ? await api.pinNote(note.id) : await api.unpinNote(note.id);
-      setSelected(updated);
-      await load(0, false);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const onArchive = async (note, archive) => {
-    try {
-      const updated = archive ? await api.archiveNote(note.id) : await api.unarchiveNote(note.id);
-      setSelected(view === (archive ? 'active' : 'archived') ? null : updated);
-      await load(0, false);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const toggleBulk = () => {
-    setBulkMode((b) => !b);
-    setSelectedIds(new Set());
-  };
-
-  const toggleSelect = (id) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const selectAll = () => {
-    setSelectedIds(new Set(items.map((n) => n.id)));
-  };
-
-  const bulkDelete = async () => {
-    if (selectedIds.size === 0) return;
+  const bulkDelete = () => {
     const count = selectedIds.size;
+    if (count === 0) return;
     if (!window.confirm(t('notes.confirmBulkDelete', { count }))) return;
-    try {
-      await api.bulkDelete([...selectedIds]);
-      setSelectedIds(new Set());
-      setBulkMode(false);
-      setSelected(null);
-      await load(0, false);
-    } catch (err) {
-      setError(err.message);
-    }
+    removeSelected([...selectedIds]);
   };
-
-  const loadMore = () => load(offset + PAGE_SIZE, true);
 
   const showEditor = creating || selected;
   const hasMore = items.length < total;
@@ -179,7 +101,7 @@ export default function Notes({ registerAction }) {
             <button
               key={tab.id}
               className={`view-tab${view === tab.id ? ' active' : ''}`}
-              onClick={() => { setView(tab.id); setSelected(null); setCreating(false); }}
+              onClick={() => setView(tab.id)}
               title={t(tab.tip)}
             >
               {tab.label}
@@ -198,7 +120,7 @@ export default function Notes({ registerAction }) {
           {!bulkMode && (
             <button
               className="btn btn-primary"
-              onClick={() => { setCreating(true); setSelected(null); }}
+              onClick={startCreating}
               title={t('tips.newNote')}
             >
               {t('notes.new')}
@@ -215,7 +137,11 @@ export default function Notes({ registerAction }) {
           </button>
           {bulkMode && (
             <>
-              <button className="link-button" onClick={selectAll} title={t('tips.selectAll')}>
+              <button
+                className="link-button"
+                onClick={selectAll}
+                title={t('tips.selectAll')}
+              >
                 {t('notes.selectAll')}
               </button>
               <div className="spacer" />
@@ -234,7 +160,7 @@ export default function Notes({ registerAction }) {
         <NoteList
           notes={items}
           selectedId={selected?.id}
-          onSelect={(n) => { setSelected(n); setCreating(false); }}
+          onSelect={select}
           bulkMode={bulkMode}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
@@ -251,11 +177,11 @@ export default function Notes({ registerAction }) {
           <NoteEditor
             ref={editorRef}
             note={creating ? null : selected}
-            onSave={onSave}
-            onCancel={() => { setCreating(false); setSelected(null); }}
-            onDelete={onDelete}
-            onPin={onPin}
-            onArchive={onArchive}
+            onSave={save}
+            onCancel={cancel}
+            onDelete={remove}
+            onPin={setPin}
+            onArchive={setArchive}
             reminderPrefs={reminderPrefs}
             reminderPrefsFailed={reminderPrefsFailed}
           />
