@@ -1,5 +1,5 @@
 import { useAccountStore } from './accountStore.js';
-import { useNotesStore } from './notesStore.js';
+import { resetRequestSequence, useNotesStore } from './notesStore.js';
 import { usePrefsStore } from './prefsStore.js';
 import { resetAvailability } from './safeStorage.js';
 import { useSessionStore } from './sessionStore.js';
@@ -15,4 +15,5 @@ export function resetStores() {
     store.setState(store.getInitialState(), true);
   }
   resetAvailability();
+  resetRequestSequence();
 }

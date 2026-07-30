@@ -25,6 +25,17 @@ const initialState = {
 let latestRequest = 0;
 
 /**
+ * Invalidates every request still in flight. Called by `resetStores()` so an answer started by one
+ * test cannot land in the next one.
+ *
+ * Increments rather than zeroes on purpose: resetting to 0 would let a pending ticket 1 match the
+ * next request's ticket 1 and apply anyway.
+ */
+export function resetRequestSequence() {
+  latestRequest += 1;
+}
+
+/**
  * Notes list, its filters and the current selection.
  *
  * Mutations reload the list themselves. Server data in a client-state store means invalidation is

@@ -28,6 +28,15 @@ describe('preferences land in the legacy keys, one value each', () => {
     expect(localStorage.getItem(KEYS.lang)).toBe('ru');
   });
 
+  it('removes the language key when the choice goes away', () => {
+    store().setLang('ru');
+    expect(localStorage.getItem(KEYS.lang)).toBe('ru');
+
+    usePrefsStore.setState({ lang: null });
+    // The adapter can express "nothing chosen", so state and storage cannot drift apart.
+    expect(localStorage.getItem(KEYS.lang)).toBeNull();
+  });
+
   it('hydrates from what the previous version left behind', () => {
     localStorage.setItem(KEYS.lang, 'ru');
     localStorage.setItem(KEYS.theme, 'dark');

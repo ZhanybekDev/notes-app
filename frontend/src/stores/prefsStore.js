@@ -39,6 +39,7 @@ const prefsStorage = {
     // would freeze it: someone whose browser later switches languages would keep the old one
     // forever, which is not how this behaved before the migration.
     if (lang) write(KEYS.lang, lang);
+    else remove(KEYS.lang);
     write(KEYS.theme, theme);
     if (tzSuggestionDismissed) write(KEYS.tzSuggestionDismissed, '1');
     else remove(KEYS.tzSuggestionDismissed);

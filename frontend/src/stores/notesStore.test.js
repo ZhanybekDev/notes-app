@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../api.js';
+import { resetStores } from './index.js';
 import { PAGE_SIZE, useNotesStore } from './notesStore.js';
 
 const note = (id, extra = {}) => ({ id, title: `note ${id}`, tags: [], ...extra });
@@ -136,6 +137,24 @@ describe('out-of-order answers', () => {
 
     // Typing fast fires a request per keystroke; the slowest answer must not win.
     expect(store().items.map((n) => n.id)).toEqual([2]);
+  });
+
+  it('drops an answer that arrives after the stores were reset', async () => {
+    vi.spyOn(api, 'tags').mockResolvedValue([]);
+    let releasePending;
+    const pending = new Promise((resolve) => {
+      releasePending = () => resolve(page([note(1)], 1));
+    });
+    vi.spyOn(api, 'listNotes').mockReturnValueOnce(pending);
+
+    const inFlight = store().load();
+    // What afterEach does between tests. A request started by one test must not land in the next.
+    resetStores();
+    releasePending();
+    await inFlight;
+
+    expect(store().items).toEqual([]);
+    expect(store().error).toBeNull();
   });
 });
 
