@@ -32,7 +32,13 @@ def test_share_returns_a_token_and_the_link_reads_without_a_session(client):
 def test_the_public_payload_carries_nothing_private():
     # Asserted against the schema rather than one response, so a field added to PublicNoteOut has
     # to be added here too — which is the moment somebody decides whether it may be public.
-    assert set(PublicNoteOut.model_fields) == {"title", "content", "tags", "note_date", "updated_at"}
+    assert set(PublicNoteOut.model_fields) == {
+        "title",
+        "content",
+        "tags",
+        "note_date",
+        "updated_at",
+    }
 
 
 def test_the_owner_sees_the_live_link_on_their_own_note(client):

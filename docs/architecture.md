@@ -107,6 +107,12 @@ graph TD
   must be indistinguishable — and the response carries `X-Robots-Tag: noindex` and `Cache-Control:
   no-store`. `PublicNoteOut` is a separate model from `NoteOut` on purpose: reusing the private one
   would publish whatever field somebody adds to it next, silently.
+- **`app/export.py`** — notes as files: markdown with JSON-safe front matter, a filename that cannot
+  become a path, and a zip built into a spooled temporary file so an account with thousands of notes
+  does not decide how much memory the process uses. Collisions are settled by appending the note id
+  rather than a counter, so a file keeps its name across exports. `GET /notes/export` takes the same
+  filters as the listing (they share `_visible_notes`) and is declared **before** `/{note_id}`, since
+  FastAPI matches in declaration order and would otherwise read the word "export" as a note id.
 - **`api.js`** — the single network seam. Centralizes the `Authorization` header (token read from `stores/sessionStore`), the 401 that ends a session, and the JSON envelope. No page talks to `fetch` directly.
 - **`stores/safeStorage.js`** — the only module that touches `localStorage` directly, and the
   successor to the boundary `auth.js` used to hold. Read, write and remove never throw: a browser
@@ -240,6 +246,7 @@ frontend/src/
 ├── stores/             notesStore · accountStore · sessionStore · prefsStore · uiStore ·
 │                       safeStorage · index.js (resetStores)
 ├── hooks/
+│   ├── useDownload.js  blob → a saved file, with the server's filename
 │   ├── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
 │   └── useDelayedFlag.js  raises a flag only if the wait outlasts 300ms
 ├── components/         NoteEditor · NoteList · TagFilter · LoadFailure · BusyButton ·

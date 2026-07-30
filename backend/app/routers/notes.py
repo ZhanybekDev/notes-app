@@ -1,12 +1,15 @@
 import secrets
 from calendar import monthrange
 from datetime import UTC, date, datetime
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import case, or_
 from sqlalchemy.orm import Session
 
 from ..deps import get_current_user, get_db
+from ..export import filenames_for, to_markdown, write_zip
 from ..models import Note, User
 from ..schemas import (
     BulkDeleteIn,
@@ -20,6 +23,21 @@ from ..schemas import (
 # 32 bytes of urlsafe randomness, 43 characters. Long enough that guessing one is not a strategy,
 # which is what lets the public read be a plain GET with no other secret in it.
 SHARE_TOKEN_BYTES = 32
+# Read back in chunks rather than in one slice: the archive may have spilled to disk, and the point
+# of spooling it was not to hold the whole thing in memory afterwards.
+ZIP_CHUNK_BYTES = 64 * 1024
+
+
+def _attachment(filename: str) -> str:
+    """A Content-Disposition both a modern browser and an old one can read.
+
+    The plain `filename` is stripped to ASCII as a fallback; `filename*` carries the real one,
+    percent-encoded per RFC 5987. Without the second, a Russian title arrives as mojibake or as the
+    literal URL of the endpoint.
+    """
+    ascii_fallback = filename.encode("ascii", "ignore").decode("ascii") or "notes.md"
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(filename)}"
+
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -46,6 +64,33 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _visible_notes(
+    db: Session,
+    user: User,
+    *,
+    q: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    archived: bool = False,
+):
+    """The where-clauses shared by listing and exporting, so "export what you are looking at" is
+    true by construction rather than by two copies of the same conditions drifting apart.
+
+    Tag filtering stays with each caller: it runs in Python to remain dialect-agnostic, and in the
+    listing it is entangled with paging.
+    """
+    query = db.query(Note).filter(Note.user_id == user.id)
+    query = query.filter(Note.archived_at.is_not(None) if archived else Note.archived_at.is_(None))
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter(or_(Note.title.ilike(pattern), Note.content.ilike(pattern)))
+    if date_from:
+        query = query.filter(Note.note_date >= date_from)
+    if date_to:
+        query = query.filter(Note.note_date <= date_to)
+    return query
+
+
 @router.get("", response_model=NotesPage)
 def list_notes(
     q: str | None = None,
@@ -58,18 +103,7 @@ def list_notes(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> NotesPage:
-    query = db.query(Note).filter(Note.user_id == user.id)
-    if archived:
-        query = query.filter(Note.archived_at.is_not(None))
-    else:
-        query = query.filter(Note.archived_at.is_(None))
-    if q:
-        pattern = f"%{q}%"
-        query = query.filter(or_(Note.title.ilike(pattern), Note.content.ilike(pattern)))
-    if date_from:
-        query = query.filter(Note.note_date >= date_from)
-    if date_to:
-        query = query.filter(Note.note_date <= date_to)
+    query = _visible_notes(db, user, q=q, date_from=date_from, date_to=date_to, archived=archived)
 
     # Tag filter requires JSON-aware logic; apply in Python to stay dialect-agnostic.
     if tag:
@@ -159,6 +193,50 @@ def bulk_delete(
     for n in notes:
         db.delete(n)
     db.commit()
+
+
+# Declared before `/{note_id}`: FastAPI matches in declaration order, so the other way round
+# this path would be read as a note whose id is the word "export".
+@router.get("/export")
+def export_notes(
+    q: str | None = None,
+    tag: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    archived: bool = False,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Every note the current filters select, as a zip of markdown files.
+
+    The same filters the listing takes, minus paging: what you are looking at is what you get. No
+    limit — an export that silently stopped at the first fifty notes would be worse than no export,
+    and the archive is spooled to disk rather than held in memory, so size is bounded by the disk
+    the container already has.
+    """
+    notes = (
+        _visible_notes(db, user, q=q, date_from=date_from, date_to=date_to, archived=archived)
+        .order_by(Note.id)
+        .all()
+    )
+    if tag:
+        needle = tag.strip().lower()
+        notes = [n for n in notes if needle in (n.tags or [])]
+
+    buffer = write_zip(notes)
+
+    def stream():
+        try:
+            while chunk := buffer.read(ZIP_CHUNK_BYTES):
+                yield chunk
+        finally:
+            buffer.close()
+
+    return StreamingResponse(
+        stream(),
+        media_type="application/zip",
+        headers={"Content-Disposition": _attachment("notes.zip")},
+    )
 
 
 @router.get("/{note_id}", response_model=NoteOut)
@@ -285,3 +363,19 @@ def unshare_note(
     note.share_token = None
     note.shared_at = None
     db.commit()
+
+
+@router.get("/{note_id}/export")
+def export_note(
+    note_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """One note as a markdown file, named after its title."""
+    note = _own_note_or_404(note_id, user, db)
+    filename = filenames_for([note])[note.id]
+    return Response(
+        content=to_markdown(note),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": _attachment(filename)},
+    )

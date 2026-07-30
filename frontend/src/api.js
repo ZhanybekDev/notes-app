@@ -62,6 +62,50 @@ async function publicRequest(path) {
   return res.json();
 }
 
+/**
+ * A request whose answer is a file rather than JSON.
+ *
+ * Still through this module: `api.js` is the only place that knows about the token and the 401
+ * rule, and a download that built its own fetch would be a second, quieter copy of both. The
+ * filename comes from the server, since only the server knows what the note is called.
+ */
+async function downloadRequest(path) {
+  const headers = {};
+  const token = useSessionStore.getState().token;
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}${path}`, { headers });
+  if (res.status === 401) {
+    useSessionStore.getState().logout();
+    throw new ApiError('Unauthorized', 401);
+  }
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new ApiError(detail.detail || res.statusText, res.status);
+  }
+  return { blob: await res.blob(), filename: filenameFrom(res.headers.get('content-disposition')) };
+}
+
+/**
+ * Reads the name the server chose, preferring the RFC 5987 form.
+ *
+ * The plain `filename` is an ASCII fallback that loses every non-Latin character, so a note called
+ * "Планы" would arrive as ".md" if we read that one first.
+ */
+export function filenameFrom(disposition, fallback = 'download') {
+  if (!disposition) return fallback;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      // A malformed header is the server's problem, not a reason to fail the download.
+    }
+  }
+  const plain = /filename="([^"]*)"/i.exec(disposition);
+  return plain?.[1] || fallback;
+}
+
 export const api = {
   register: (username, password) =>
     request('/auth/register', { method: 'POST', body: { username, password } }),
@@ -82,6 +126,9 @@ export const api = {
 
   calendar: (year, month) => request(`/notes/calendar?year=${year}&month=${month}`),
   tags: () => request('/tags'),
+
+  exportNote: (id) => downloadRequest(`/notes/${id}/export`),
+  exportNotes: (params = {}) => downloadRequest(`/notes/export${buildQuery(params)}`),
 
   shareNote: (id) => request(`/notes/${id}/share`, { method: 'POST' }),
   unshareNote: (id) => request(`/notes/${id}/share`, { method: 'DELETE' }),

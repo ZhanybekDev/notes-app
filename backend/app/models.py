@@ -78,7 +78,9 @@ class Note(Base):
     )
     # NULL means "not shared". Revoking writes NULL back, which invalidates the old link for good:
     # a new share mints a new token rather than resurrecting the previous one.
-    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    share_token: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
     shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     owner: Mapped[User] = relationship(back_populates="notes")

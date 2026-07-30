@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useLang } from '../i18n.jsx';
 import BusyButton from '../components/BusyButton.jsx';
+import { useDownload } from '../hooks/useDownload.js';
 import Skeleton from '../components/Skeleton.jsx';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
 import { useAccountStore } from '../stores/accountStore.js';
@@ -107,6 +108,7 @@ export default function Settings() {
   const [pwError, setPwError] = useState(null);
   const [pwOk, setPwOk] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
+  const { busy: exporting, download } = useDownload();
 
   const [deletePw, setDeletePw] = useState('');
   const [deleteError, setDeleteError] = useState(null);
@@ -336,6 +338,20 @@ export default function Settings() {
             {t('settings.submit')}
           </BusyButton>
         </form>
+      </section>
+
+      <section className="settings-card">
+        <h2>{t('export.all')}</h2>
+        <p className="settings-hint">{t('export.allHint')}</p>
+        <BusyButton
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => download(() => api.exportNotes())}
+          busy={exporting}
+          title={t('export.allTip')}
+        >
+          {t('export.all')}
+        </BusyButton>
       </section>
 
       <section className="settings-card danger">

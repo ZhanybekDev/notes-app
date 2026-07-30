@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { api } from './api.js';
+import { api, filenameFrom } from './api.js';
 import { useSessionStore } from './stores/sessionStore.js';
 
 describe('the public request path', () => {
@@ -44,5 +44,54 @@ describe('the public request path', () => {
     });
 
     await expect(api.publicNote('tok')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+
+describe('the download path', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('prefers the encoded filename over the ascii fallback', () => {
+    // Reading `filename` first would turn "Планы.md" into ".md": the fallback drops every
+    // non-Latin character by construction.
+    const header = 'attachment; filename=".md"; filename*=UTF-8\'\'%D0%9F%D0%BB%D0%B0%D0%BD%D1%8B.md';
+    expect(filenameFrom(header)).toBe('Планы.md');
+  });
+
+  it('falls back to the plain name, and then to a default', () => {
+    expect(filenameFrom('attachment; filename="notes.zip"')).toBe('notes.zip');
+    expect(filenameFrom(null, 'download')).toBe('download');
+    expect(filenameFrom("attachment; filename*=UTF-8''%E0%A4%A", 'download')).toBe('download');
+  });
+
+  it('carries the session on an export, unlike the public read', async () => {
+    useSessionStore.getState().login('jwt');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(['zip']),
+      headers: { get: () => 'attachment; filename="notes.zip"' },
+    });
+
+    const { filename } = await api.exportNotes({ tag: 'work' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/notes/export?tag=work', {
+      headers: { Authorization: 'Bearer jwt' },
+    });
+    expect(filename).toBe('notes.zip');
+  });
+
+  it('ends the session on a 401, the same as every other private request', async () => {
+    useSessionStore.getState().login('jwt');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    });
+
+    await expect(api.exportNote(1)).rejects.toThrow('Unauthorized');
+    expect(useSessionStore.getState().token).toBeNull();
   });
 });

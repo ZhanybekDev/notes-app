@@ -35,6 +35,13 @@ export const MESSAGES = {
       notFoundHint: 'It may have been revoked, or the note may have been archived or deleted.',
       openApp: 'Go to Notes',
     },
+    export: {
+      note: 'Export',
+      noteTip: 'Download this note as a markdown file',
+      all: 'Export all notes',
+      allTip: 'Download every note as a zip of markdown files',
+      allHint: 'A zip of markdown files, one per note. Archived notes are not included.',
+    },
     lang: { label: { en: 'EN', ru: 'RU' } },
     auth: {
       loginTitle: 'Welcome back',
@@ -222,6 +229,13 @@ export const MESSAGES = {
       notFound: 'Ссылка не работает',
       notFoundHint: 'Её могли отозвать, а заметку — заархивировать или удалить.',
       openApp: 'Перейти к заметкам',
+    },
+    export: {
+      note: 'Экспорт',
+      noteTip: 'Скачать заметку файлом markdown',
+      all: 'Экспортировать все заметки',
+      allTip: 'Скачать все заметки zip-архивом из markdown-файлов',
+      allHint: 'Zip из markdown-файлов, по одному на заметку. Архивные не входят.',
     },
     lang: { label: { en: 'EN', ru: 'RU' } },
     auth: {

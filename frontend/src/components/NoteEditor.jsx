@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import BusyButton from './BusyButton.jsx';
 import ShareControl from './ShareControl.jsx';
+import { api } from '../api.js';
+import { useDownload } from '../hooks/useDownload.js';
 import MarkdownToolbar from './MarkdownToolbar.jsx';
 import { useLang } from '../i18n.jsx';
 import {
@@ -25,6 +27,7 @@ const NoteEditor = forwardRef(function NoteEditor(
   ref,
 ) {
   const { lang, t } = useLang();
+  const { busy: exporting, download } = useDownload();
   const [draft, setDraft] = useState(emptyNote());
   const [tagsInput, setTagsInput] = useState('');
   const formRef = useRef(null);
@@ -97,6 +100,17 @@ const NoteEditor = forwardRef(function NoteEditor(
         {isPersisted && (
           <div className="editor-flags">
             {note && <ShareControl noteId={note.id} token={note.share_token} />}
+            {note && (
+              <BusyButton
+                type="button"
+                className="link-button"
+                onClick={() => download(() => api.exportNote(note.id))}
+                busy={exporting}
+                title={t('export.noteTip')}
+              >
+                {t('export.note')}
+              </BusyButton>
+            )}
             <button
               type="button"
               className={`flag-btn ${isPinned ? 'on' : ''}`}
