@@ -138,7 +138,7 @@ export default function Calendar() {
         <div className="day-notes">
           <h3>{t('calendar.notesOn')} {selectedDate}</h3>
           {notesForDay.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>{t('calendar.noNotes')}</p>
+            <p className="day-notes-empty">{t('calendar.noNotes')}</p>
           ) : (
             <ul>
               {notesForDay.map((n) => (

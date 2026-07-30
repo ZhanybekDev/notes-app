@@ -112,6 +112,14 @@ graph TD
 - **`hooks/useShortcuts.js`** — global `keydown` listener; ignores editable targets except for `Cmd/Ctrl+S`.
 - **`components/*`** — presentational + small behavior: `NoteEditor` (draft state + markdown toolbar), `NoteList` (virtualized-ready row), `TagFilter`, `ThemeToggle`, `LanguageToggle`, `MarkdownToolbar`, `HelpOverlay`.
 - **`pages/*`** — screens with data-fetching and orchestration: `Login`, `Register`, `Notes` (list + editor + bulk + pagination + pin/archive), `Calendar`, `Settings`.
+- **`styles/*`** — the design system, imported by `styles.css` in a significant order: `tokens`
+  (every spacing, type, colour, radius and duration value in the app), `base` (reset, body
+  typography, the `:focus-visible` system), `components`, `screens`, and `motion` last. A literal
+  spacing or font-size value in a rule is a bug, not a shortcut. `motion.css` both comes last **and**
+  uses `!important`: later position only wins at equal specificity, and a class like `.toast.error`
+  outranks the universal selector, so ordering alone would leave `prefers-reduced-motion` silently
+  not working. Nothing in the test suite can catch that — `vite.config.js` sets `css: false`, so
+  vitest never processes a stylesheet.
 - **`stores/*`** — Zustand stores holding state shared beyond one screen, plus the async actions that own it. A mutation reloads what it invalidated, so no caller has to remember. Stores are headless: no `window`, no DOM, so they are unit-tested without React. `index.js` exports `resetStores()`, which the test setup calls after every test because a store is a singleton for the whole test process. Local state that nobody shares — form drafts, the calendar's visible month — stays in `useState` on purpose.
 
 ### Dependency rules worth keeping
@@ -219,6 +227,8 @@ frontend/src/
 ├── api.js              fetch wrapper + API client
 ├── theme.js            light / dark / system via data-theme attribute
 ├── i18n.jsx            EN + RU catalogue, useLang(), dotted keys with {name} interpolation
+├── styles.css          entry point: five @imports, order significant
+├── styles/             tokens · base · components · screens · motion
 ├── stores/             notesStore · accountStore · sessionStore · prefsStore · uiStore ·
 │                       safeStorage · index.js (resetStores)
 ├── hooks/

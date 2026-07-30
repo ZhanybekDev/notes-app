@@ -584,6 +584,8 @@ kbd {
 /* ============================== Skeletons ============================== */
 .skeleton {
   display: block;
+  width: 100%;
+  height: var(--space-4);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   animation: skeleton-pulse 1.4s ease-in-out infinite;
@@ -605,6 +607,16 @@ kbd {
 
 .skeleton-row + .skeleton-row { border-top: 1px solid var(--border); }
 
+.skeleton-title { width: 70%; }
+
+.skeleton-meta { width: 40%; height: var(--space-3); }
+
+.skeleton-field-wide { width: 70%; height: var(--space-5); }
+
+.skeleton-field-narrow { width: 60%; height: var(--space-5); }
+
+.skeleton-label { width: 45%; }
+
 @keyframes skeleton-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
@@ -621,3 +633,9 @@ kbd {
 }
 
 .list-error .btn { margin-top: var(--space-2); }
+
+.settings-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

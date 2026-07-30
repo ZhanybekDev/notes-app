@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useLang } from '../i18n.jsx';
+import Skeleton from '../components/Skeleton.jsx';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
 import { useAccountStore } from '../stores/accountStore.js';
 import { usePrefsStore } from '../stores/prefsStore.js';
@@ -145,7 +146,13 @@ export default function Settings() {
         {!persistAvailable && (
           <div className="notice-warning">{t('settings.storageBlocked')}</div>
         )}
-        {prefs === null && prefsError === null && <div className="settings-hint">…</div>}
+        {prefs === null && prefsError === null && (
+          <div className="settings-skeleton">
+            <Skeleton className="skeleton-label" />
+            <Skeleton className="skeleton-field-wide" />
+            <Skeleton className="skeleton-field-narrow" />
+          </div>
+        )}
         {prefs !== null && !prefs.bot_configured && (
           <div className="notice-warning">{t('settings.botNotConfigured')}</div>
         )}
