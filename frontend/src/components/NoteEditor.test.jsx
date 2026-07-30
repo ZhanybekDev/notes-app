@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import NoteEditor from './NoteEditor.jsx';
@@ -71,5 +72,24 @@ describe('NoteEditor reminder hint', () => {
 
     expect(screen.queryByText(/Reminder on/)).not.toBeInTheDocument();
     expect(screen.queryByText(/already passed/)).not.toBeInTheDocument();
+  });
+});
+
+
+describe('while a save is in flight', () => {
+  it('marks the save button busy and refuses a second press', async () => {
+    const onSave = vi.fn();
+    render(
+      <MemoryRouter>
+        <NoteEditor note={null} onSave={onSave} saving />
+      </MemoryRouter>,
+    );
+
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute('aria-busy', 'true');
+
+    await userEvent.click(save);
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import BusyButton from './BusyButton.jsx';
 import MarkdownToolbar from './MarkdownToolbar.jsx';
 import { useLang } from '../i18n.jsx';
 import {
@@ -16,7 +17,10 @@ function emptyNote() {
 }
 
 const NoteEditor = forwardRef(function NoteEditor(
-  { note, onSave, onCancel, onDelete, onPin, onArchive, reminderPrefs, reminderPrefsFailed },
+  {
+    note, onSave, onCancel, onDelete, onPin, onArchive, reminderPrefs, reminderPrefsFailed,
+    saving = false, deleting = false, flagBusy = false,
+  },
   ref,
 ) {
   const { lang, t } = useLang();
@@ -94,6 +98,7 @@ const NoteEditor = forwardRef(function NoteEditor(
             <button
               type="button"
               className={`flag-btn ${isPinned ? 'on' : ''}`}
+              disabled={flagBusy}
               title={isPinned ? t('editor.unpin') : t('editor.pin')}
               onClick={() => onPin?.(note, !isPinned)}
             >
@@ -102,6 +107,7 @@ const NoteEditor = forwardRef(function NoteEditor(
             <button
               type="button"
               className={`flag-btn ${isArchived ? 'on' : ''}`}
+              disabled={flagBusy}
               title={isArchived ? t('editor.unarchive') : t('editor.archive')}
               onClick={() => onArchive?.(note, !isArchived)}
             >
@@ -147,9 +153,9 @@ const NoteEditor = forwardRef(function NoteEditor(
         </div>
       </div>
       <div className="actions">
-        <button type="submit" className="btn btn-primary" title={t('tips.save')}>
+        <BusyButton type="submit" className="btn btn-primary" busy={saving} title={t('tips.save')}>
           {t('editor.save')}
-        </button>
+        </BusyButton>
         {onCancel && (
           <button
             type="button"
@@ -162,16 +168,17 @@ const NoteEditor = forwardRef(function NoteEditor(
         )}
         <div className="spacer" />
         {note && onDelete && (
-          <button
+          <BusyButton
             type="button"
             className="btn btn-danger"
+            busy={deleting}
             title={t('tips.deleteNote')}
             onClick={() => {
               if (window.confirm(t('editor.confirmDelete'))) onDelete(note.id);
             }}
           >
             {t('editor.delete')}
-          </button>
+          </BusyButton>
         )}
       </div>
     </form>

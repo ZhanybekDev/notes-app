@@ -643,3 +643,39 @@ kbd {
   flex-direction: column;
   gap: var(--space-3);
 }
+
+/* ============================== Busy buttons ============================== */
+.is-busy {
+  position: relative;
+  cursor: progress;
+}
+
+.is-busy .btn-label { opacity: 0; }
+
+.btn-spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-pill);
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Calendar cells while the month loads: the grid keeps its shape, the numbers stay unsaid. */
+.skeleton-cell {
+  cursor: default;
+  display: flex;
+  align-items: flex-start;
+}
+
+.skeleton-day {
+  width: 18px;
+  height: var(--text-sm);
+}

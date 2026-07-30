@@ -306,3 +306,61 @@ describe('selection', () => {
     expect(store().selectedIds.size).toBe(0);
   });
 });
+
+
+describe('a mutation in flight', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(api, 'tags').mockResolvedValue([]);
+    vi.spyOn(api, 'listNotes').mockResolvedValue({ items: [], total: 0 });
+  });
+
+  it('names itself while it runs and lets go afterwards', async () => {
+    let finish;
+    vi.spyOn(api, 'createNote').mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+
+    const saving = store().save({ title: 'x', content: '' });
+    expect(store().busy).toBe('save');
+
+    finish({ id: 1, title: 'x' });
+    await saving;
+    expect(store().busy).toBeNull();
+  });
+
+  it('lets go even when the request fails', async () => {
+    vi.spyOn(api, 'deleteNote').mockRejectedValue(new Error('nope'));
+
+    await store().remove(1);
+
+    expect(store().busy).toBeNull();
+    expect(store().error).toBe('nope');
+  });
+
+  it('refuses a second mutation while the first is still going', async () => {
+    let finish;
+    const create = vi
+      .spyOn(api, 'createNote')
+      .mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+
+    const first = store().save({ title: 'x', content: '' });
+    await store().save({ title: 'x', content: '' });
+
+    // Two notes from one double-click is the failure this guards; the disabled button is the other
+    // half of the same rule and cannot be relied on alone (keyboard, slow paint, tests).
+    expect(create).toHaveBeenCalledTimes(1);
+    finish({ id: 1, title: 'x' });
+    await first;
+  });
+
+  it('tags a page load so the button that asked for it can say so', async () => {
+    let finish;
+    vi.spyOn(api, 'listNotes').mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+
+    const more = store().loadMore();
+    expect(store().busy).toBe('more');
+
+    finish({ items: [], total: 0 });
+    await more;
+    expect(store().busy).toBeNull();
+  });
+});

@@ -23,3 +23,19 @@ export function SkeletonList({ rows = 3 }) {
     </div>
   );
 }
+
+/** The month grid while it loads: the same seven columns, with no numbers to misread. */
+export function SkeletonMonth({ weekdays = [], cells = 35 }) {
+  return (
+    <div className="cal-grid" aria-hidden="true">
+      {weekdays.map((w) => (
+        <div key={w} className="cal-weekday">{w}</div>
+      ))}
+      {Array.from({ length: cells }, (_, i) => (
+        <div key={i} className="cal-cell skeleton-cell">
+          <Skeleton className="skeleton-day" />
+        </div>
+      ))}
+    </div>
+  );
+}

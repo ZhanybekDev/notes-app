@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import LoadFailure from '../components/LoadFailure.jsx';
-import { SkeletonList } from '../components/Skeleton.jsx';
+import { SkeletonList, SkeletonMonth } from '../components/Skeleton.jsx';
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js';
 import { useLang } from '../i18n.jsx';
 import { reportFailure } from '../stores/uiStore.js';
@@ -39,6 +39,7 @@ export default function Calendar() {
   // A failed month has no day badges, so without its own state the grid would read as "no notes this
   // month" — and once the toast leaves, nothing on screen would say otherwise.
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [reloads, setReloads] = useState(0);
   // The opened day has its own lifecycle: its notes are fetched one by one, and that can fail while
   // the month around it loaded fine.
@@ -51,12 +52,18 @@ export default function Calendar() {
   useEffect(() => {
     let alive = true;
     setFailed(false);
+    setLoading(true);
     api
       .calendar(year, month)
-      .then((d) => { if (alive) setDays(d); })
+      .then((d) => {
+        if (!alive) return;
+        setDays(d);
+        setLoading(false);
+      })
       .catch((e) => {
         if (!alive) return;
         setFailed(true);
+        setLoading(false);
         reportFailure(e);
       });
     return () => { alive = false; };
@@ -65,6 +72,7 @@ export default function Calendar() {
   // Same rule as the notes list: a skeleton that flashes for 80ms reads as a glitch, so a fast answer
   // shows nothing at all.
   const showDaySkeleton = useDelayedFlag(dayStatus === 'loading');
+  const showMonthSkeleton = useDelayedFlag(loading);
 
   const counts = useMemo(() => {
     const m = new Map();
@@ -128,6 +136,10 @@ export default function Calendar() {
       </header>
       {failed ? (
         <LoadFailure onRetry={() => setReloads((n) => n + 1)} />
+      ) : loading ? (
+        // Same rule as everywhere else: nothing is claimed until an answer exists, and a grid with no
+        // badges is a claim that the month is empty. After 300ms the shape appears without the numbers.
+        showMonthSkeleton ? <SkeletonMonth weekdays={weekdays} /> : null
       ) : (
       <div className="cal-grid">
         {weekdays.map((w) => <div key={w} className="cal-weekday">{w}</div>)}

@@ -235,7 +235,7 @@ frontend/src/
 ├── hooks/
 │   ├── useShortcuts.js global key bindings: n · / · Cmd+S · ? · Esc
 │   └── useDelayedFlag.js  raises a flag only if the wait outlasts 300ms
-├── components/         NoteEditor · NoteList · TagFilter · LoadFailure ·
+├── components/         NoteEditor · NoteList · TagFilter · LoadFailure · BusyButton ·
 │                       ThemeToggle · LanguageToggle · Toaster · Skeleton ·
 │                       MarkdownToolbar · HelpOverlay
 └── pages/              Login · Register · Notes · Calendar · Settings
@@ -302,6 +302,14 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
   Russian interface can still read one English sentence. A background failure therefore
   appears twice on purpose, as an event (the toast, which leaves) and as a state (`components/LoadFailure`
   in the list, the calendar grid or one opened day, which stays, with a retry). Empty states are
+  Every request has both halves: a failure path that reports and records, and a visible sign that it
+  is running. Area loads show a skeleton after 300ms — the notes list, the settings card, the month
+  grid, the notes of one opened day — and nothing before that, so a fast answer never flashes. Actions
+  show it on the button that started them: the domain stores carry a `busy` tag naming the request in
+  flight (`'save'`, `'remove'`, `'pin'`, `'archive'`, `'bulk'`, `'more'`, `'patch'`, `'unlink'`), the
+  page turns that into `busy` on one `BusyButton`, and the same tag refuses a second call while the
+  first is out — the disabled button and the store guard are two halves of one rule, since a button
+  cannot be trusted alone. Empty states are
   claims about the server's answer, so they render only once an answer exists: while the first request
   is in flight the area stays blank rather than announcing an empty account. "No answer yet" is tracked
   by `notesStore.loaded`, not by the length of the list — an empty result is an answer too, and keying

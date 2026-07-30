@@ -18,6 +18,10 @@ const initialState = {
   // fresh store looks like and what a query matching nothing looks like, and the screen has to say
   // different things about the two.
   loaded: false,
+  // Which request is in flight, by name: 'save' | 'remove' | 'pin' | 'archive' | 'bulk' | 'more'.
+  // A tag rather than a boolean, because the screen has several buttons and only the one that was
+  // pressed should show a spinner.
+  busy: null,
   offset: 0,
   bulkMode: false,
   selectedIds: new Set(),
@@ -98,7 +102,15 @@ export const useNotesStore = create((set, get) => ({
     }
   },
 
-  loadMore: () => get().load(get().offset + PAGE_SIZE, true),
+  loadMore: async () => {
+    if (get().busy) return;
+    set({ busy: 'more' });
+    try {
+      await get().load(get().offset + PAGE_SIZE, true);
+    } finally {
+      set({ busy: null });
+    }
+  },
 
   // Reloading on a filter change lives here and nowhere else. It used to hang on the identity of a
   // useCallback in the page; leaving a second trigger in an effect would double every request.
@@ -123,7 +135,8 @@ export const useNotesStore = create((set, get) => ({
 
   save: async (data) => {
     const { selected } = get();
-    set({ error: null });
+    if (get().busy) return;
+    set({ error: null, busy: 'save' });
     try {
       if (selected) {
         set({ selected: await api.updateNote(selected.id, data) });
@@ -134,11 +147,14 @@ export const useNotesStore = create((set, get) => ({
     } catch (err) {
       set({ error: err.message });
       reportFailure(err);
+    } finally {
+      set({ busy: null });
     }
   },
 
   remove: async (id) => {
-    set({ error: null });
+    if (get().busy) return;
+    set({ error: null, busy: 'remove' });
     try {
       await api.deleteNote(id);
       set({ selected: null });
@@ -146,22 +162,28 @@ export const useNotesStore = create((set, get) => ({
     } catch (err) {
       set({ error: err.message });
       reportFailure(err);
+    } finally {
+      set({ busy: null });
     }
   },
 
   setPin: async (note, pin) => {
-    set({ error: null });
+    if (get().busy) return;
+    set({ error: null, busy: 'pin' });
     try {
       set({ selected: pin ? await api.pinNote(note.id) : await api.unpinNote(note.id) });
       await get().load(0, false);
     } catch (err) {
       set({ error: err.message });
       reportFailure(err);
+    } finally {
+      set({ busy: null });
     }
   },
 
   setArchive: async (note, archive) => {
-    set({ error: null });
+    if (get().busy) return;
+    set({ error: null, busy: 'archive' });
     try {
       const updated = archive ? await api.archiveNote(note.id) : await api.unarchiveNote(note.id);
       // Archiving from the active view moves the note out of sight, so the editor closes instead of
@@ -172,12 +194,15 @@ export const useNotesStore = create((set, get) => ({
     } catch (err) {
       set({ error: err.message });
       reportFailure(err);
+    } finally {
+      set({ busy: null });
     }
   },
 
   bulkDelete: async (ids) => {
     if (!ids.length) return;
-    set({ error: null });
+    if (get().busy) return;
+    set({ error: null, busy: 'bulk' });
     try {
       await api.bulkDelete(ids);
       set({ selectedIds: new Set(), bulkMode: false, selected: null });
@@ -185,6 +210,8 @@ export const useNotesStore = create((set, get) => ({
     } catch (err) {
       set({ error: err.message });
       reportFailure(err);
+    } finally {
+      set({ busy: null });
     }
   },
 

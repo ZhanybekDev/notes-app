@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useLang } from '../i18n.jsx';
+import BusyButton from '../components/BusyButton.jsx';
 import Skeleton from '../components/Skeleton.jsx';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
 import { useAccountStore } from '../stores/accountStore.js';
@@ -31,6 +32,7 @@ export default function Settings() {
   const prefs = useAccountStore((s) => s.prefs);
   const prefsError = useAccountStore((s) => s.error);
   const prefsSaved = useAccountStore((s) => s.saved);
+  const prefsBusy = useAccountStore((s) => s.busy);
   const loadPrefs = useAccountStore((s) => s.load);
   const patchStore = useAccountStore((s) => s.patch);
   const unlinkTelegram = useAccountStore((s) => s.unlink);
@@ -104,14 +106,17 @@ export default function Settings() {
   const [newPw, setNewPw] = useState('');
   const [pwError, setPwError] = useState(null);
   const [pwOk, setPwOk] = useState(false);
+  const [pwBusy, setPwBusy] = useState(false);
 
   const [deletePw, setDeletePw] = useState('');
   const [deleteError, setDeleteError] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const changePassword = async (e) => {
     e.preventDefault();
     setPwError(null);
     setPwOk(false);
+    setPwBusy(true);
     try {
       await api.changePassword(currentPw, newPw);
       setPwOk(true);
@@ -119,6 +124,8 @@ export default function Settings() {
       setNewPw('');
     } catch (err) {
       setPwError(err.message);
+    } finally {
+      setPwBusy(false);
     }
   };
 
@@ -126,12 +133,16 @@ export default function Settings() {
     e.preventDefault();
     setDeleteError(null);
     if (!window.confirm(t('settings.confirmDelete'))) return;
+    setDeleteBusy(true);
     try {
       await api.deleteAccount(deletePw);
       logout();
       navigate('/login', { replace: true });
     } catch (err) {
       setDeleteError(err.message);
+      // Not in a `finally`: a success unmounts this screen, and clearing the flag on the way out
+      // would set state on a page that is already gone.
+      setDeleteBusy(false);
     }
   };
 
@@ -162,14 +173,15 @@ export default function Settings() {
             {showTzSuggestion && (
               <div className="tz-suggestion">
                 <span>{t('settings.timezoneSuggestion', { zone: suggestedZone })}</span>
-                <button
+                <BusyButton
                   type="button"
                   className="btn btn-ghost"
                   onClick={() => patchPrefs({ timezone: suggestedZone })}
+                  busy={prefsBusy === 'patch'}
                   title={t('tips.timezoneSuggestionApply')}
                 >
                   {t('settings.timezoneSuggestionApply')}
-                </button>
+                </BusyButton>
                 <button
                   type="button"
                   className="link-button"
@@ -229,14 +241,15 @@ export default function Settings() {
                       ? t('settings.telegramConnected', { username: prefs.telegram_username })
                       : t('settings.telegramConnectedNoUsername')}
                   </span>
-                  <button
+                  <BusyButton
                     type="button"
                     className="btn btn-ghost"
                     onClick={disconnectTelegram}
+                    busy={prefsBusy === 'unlink'}
                     title={t('tips.disconnectTelegram')}
                   >
                     {t('settings.disconnectTelegram')}
-                  </button>
+                  </BusyButton>
                 </>
               ) : (
                 <>
@@ -314,9 +327,14 @@ export default function Settings() {
           </label>
           {pwError && <div className="error">{pwError}</div>}
           {pwOk && <div className="success">{t('settings.passwordChanged')}</div>}
-          <button type="submit" className="btn btn-primary" title={t('tips.changePassword')}>
+          <BusyButton
+            type="submit"
+            className="btn btn-primary"
+            busy={pwBusy}
+            title={t('tips.changePassword')}
+          >
             {t('settings.submit')}
-          </button>
+          </BusyButton>
         </form>
       </section>
 
@@ -336,9 +354,14 @@ export default function Settings() {
             />
           </label>
           {deleteError && <div className="error">{deleteError}</div>}
-          <button type="submit" className="btn btn-danger" title={t('tips.deleteAccount')}>
+          <BusyButton
+            type="submit"
+            className="btn btn-danger"
+            busy={deleteBusy}
+            title={t('tips.deleteAccount')}
+          >
             {t('settings.deleteAccount')}
-          </button>
+          </BusyButton>
         </form>
       </section>
     </div>

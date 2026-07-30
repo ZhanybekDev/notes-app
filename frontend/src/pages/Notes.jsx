@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import NoteList from '../components/NoteList.jsx';
 import NoteEditor from '../components/NoteEditor.jsx';
 import TagFilter from '../components/TagFilter.jsx';
+import BusyButton from '../components/BusyButton.jsx';
 import { SkeletonList } from '../components/Skeleton.jsx';
 import { useDelayedFlag } from '../hooks/useDelayedFlag.js';
 import { useLang } from '../i18n.jsx';
@@ -23,6 +24,7 @@ export default function Notes({ registerAction }) {
   const selectedIds = useNotesStore((s) => s.selectedIds);
   const status = useNotesStore((s) => s.status);
   const loaded = useNotesStore((s) => s.loaded);
+  const busy = useNotesStore((s) => s.busy);
 
   const load = useNotesStore((s) => s.load);
   const loadMore = useNotesStore((s) => s.loadMore);
@@ -144,14 +146,15 @@ export default function Notes({ registerAction }) {
                 {t('notes.selectAll')}
               </button>
               <div className="spacer" />
-              <button
+              <BusyButton
                 className="btn btn-danger"
                 onClick={bulkDelete}
+                busy={busy === 'bulk'}
                 disabled={selectedCount === 0}
                 title={t('tips.deleteSelected')}
               >
                 {t('notes.deleteSelected', { count: selectedCount })}
-              </button>
+              </BusyButton>
             </>
           )}
         </div>
@@ -174,9 +177,14 @@ export default function Notes({ registerAction }) {
           />
         )}
         {hasMore && (
-          <button className="btn btn-ghost load-more" onClick={loadMore} title={t('tips.loadMore')}>
+          <BusyButton
+            className="btn btn-ghost load-more"
+            onClick={loadMore}
+            busy={busy === 'more'}
+            title={t('tips.loadMore')}
+          >
             {t('notes.loadMore')} ({items.length} {t('notes.of')} {total})
-          </button>
+          </BusyButton>
         )}
       </aside>
       <section className="content-pane">
@@ -191,6 +199,9 @@ export default function Notes({ registerAction }) {
             onArchive={setArchive}
             reminderPrefs={reminderPrefs}
             reminderPrefsFailed={reminderPrefsFailed}
+            saving={busy === 'save'}
+            deleting={busy === 'remove'}
+            flagBusy={busy === 'pin' || busy === 'archive'}
           />
         ) : (
           <div className="empty-state">

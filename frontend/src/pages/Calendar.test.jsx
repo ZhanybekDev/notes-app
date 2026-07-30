@@ -15,6 +15,12 @@ const DAYS = [
   { date: '2026-08-12', note_ids: [3] },
 ];
 
+// The heading renders on the first paint; the grid waits for the month. A test that touches cells
+// has to wait for the grid, or it races the request.
+async function grid() {
+  await waitFor(() => expect(document.querySelector('.cal-grid')).not.toBeNull());
+}
+
 function renderCalendar() {
   return render(
     <>
@@ -50,9 +56,26 @@ describe('Calendar page', () => {
     );
   });
 
+  it('shows the grid shape while the month is on the way, not an empty month', async () => {
+    let answer;
+    calendar.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    renderCalendar();
+
+    // Before the delay: nothing claimed. An empty grid would read as a month with nothing in it.
+    expect(document.querySelectorAll('.cal-cell').length).toBe(0);
+
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(document.querySelectorAll('.skeleton-cell').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.badge').length).toBe(0);
+
+    await act(async () => { answer(DAYS); });
+    await waitFor(() => expect(document.querySelectorAll('.badge').length).toBe(2));
+    expect(document.querySelectorAll('.skeleton-cell').length).toBe(0);
+  });
+
   it('marks today apart from the day the reader picked', async () => {
     renderCalendar();
-    await screen.findByRole('heading', { name: 'August 2026' });
+    await grid();
 
     const today = document.querySelector('.cal-cell.today');
     expect(today).toHaveTextContent('12');
@@ -92,7 +115,7 @@ describe('Calendar page', () => {
   it('opens a day and lists the notes filed under it', async () => {
     vi.spyOn(api, 'getNote').mockResolvedValue({ id: 3, title: 'Roadmap', content: 'q3 plan' });
     renderCalendar();
-    await screen.findByRole('heading', { name: 'August 2026' });
+    await grid();
 
     await userEvent.click(document.querySelector('.cal-cell.today'));
 
@@ -102,7 +125,7 @@ describe('Calendar page', () => {
 
   it('says a day is empty rather than showing an empty list', async () => {
     renderCalendar();
-    await screen.findByRole('heading', { name: 'August 2026' });
+    await grid();
 
     // The 5th is inside the month but absent from the server's answer.
     await userEvent.click(document.querySelectorAll('.cal-cell:not(.empty)')[4]);
@@ -114,7 +137,7 @@ describe('Calendar page', () => {
     const getNote = vi.spyOn(api, 'getNote');
     getNote.mockResolvedValue({ id: 3, title: 'Roadmap', content: 'q3 plan' });
     renderCalendar();
-    await screen.findByRole('heading', { name: 'August 2026' });
+    await grid();
 
     await userEvent.click(document.querySelector('.cal-cell.today'));
     await screen.findByText('Roadmap');
@@ -138,7 +161,7 @@ describe('Calendar page', () => {
     let answer;
     vi.spyOn(api, 'getNote').mockReturnValue(new Promise((resolve) => { answer = resolve; }));
     renderCalendar();
-    await screen.findByRole('heading', { name: 'August 2026' });
+    await grid();
 
     await userEvent.click(document.querySelector('.cal-cell.today'));
 
@@ -153,7 +176,7 @@ describe('Calendar page', () => {
       (id) => new Promise((resolve) => answers.set(id, resolve)),
     );
     renderCalendar();
-    await screen.findByRole('heading', { name: 'August 2026' });
+    await grid();
 
     // The 3rd holds two notes, the 12th one. Open the slow day, then the fast one.
     await userEvent.click(document.querySelectorAll('.cal-cell:not(.empty)')[2]);
@@ -179,7 +202,7 @@ describe('Calendar page', () => {
     getNote.mockImplementationOnce(() => new Promise((_, r) => { reject = r; }));
     getNote.mockImplementationOnce(() => new Promise(() => {}));
     renderCalendar();
-    await screen.findByRole('heading', { name: 'August 2026' });
+    await grid();
 
     await userEvent.click(document.querySelectorAll('.cal-cell:not(.empty)')[2]);
     getNote.mockResolvedValue({ id: 3, title: 'Roadmap', content: '' });

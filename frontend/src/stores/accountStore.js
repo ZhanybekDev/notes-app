@@ -9,6 +9,7 @@ const initialState = {
   status: 'idle', // idle | loading | ready | error
   error: null,
   saved: false,
+  busy: null, // 'patch' | 'unlink' while one of them is in flight
   inflight: null,
 };
 
@@ -50,7 +51,8 @@ export const useAccountStore = create((set, get) => ({
   },
 
   patch: async (patch) => {
-    set({ error: null, saved: false });
+    if (get().busy) return null;
+    set({ error: null, saved: false, busy: 'patch' });
     try {
       const prefs = await api.updateSettings(patch);
       set({ prefs, status: 'ready', saved: true });
@@ -65,11 +67,14 @@ export const useAccountStore = create((set, get) => ({
       set({ error: err.message });
       reportFailure(err);
       return null;
+    } finally {
+      set({ busy: null });
     }
   },
 
   unlink: async () => {
-    set({ error: null });
+    if (get().busy) return null;
+    set({ error: null, busy: 'unlink' });
     try {
       await api.unlinkTelegram();
       const prefs = await api.getSettings();
@@ -79,6 +84,8 @@ export const useAccountStore = create((set, get) => ({
       set({ error: err.message });
       reportFailure(err);
       return null;
+    } finally {
+      set({ busy: null });
     }
   },
 
