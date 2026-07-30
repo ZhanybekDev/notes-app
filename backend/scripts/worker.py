@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import bot_commands, reminders
-from app.bot_i18n import SUPPORTED, t
+from app.bot_i18n import DEFAULT, SUPPORTED, t
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Note, Reminder, User
@@ -41,6 +41,10 @@ POLL_BACKOFF_BASE_SECONDS = 2
 POLL_BACKOFF_MAX_SECONDS = 60
 MAX_UPDATE_ATTEMPTS = 5
 DELIVERY_BATCH_LIMIT = 50
+# How long to wait before trying the command menu again. Publishing it used to be a one-shot at
+# startup, so one unreachable moment left the menu unpublished until somebody restarted the
+# container — invisible, because polling recovers on its own and the worker looks healthy.
+MENU_RETRY_SECONDS = 300
 
 logger = logging.getLogger("worker")
 
@@ -165,21 +169,40 @@ def _reply(client: TelegramClient, reply: bot_commands.BotReply) -> None:
         logger.warning("could not answer chat %s", reply.chat_id)
 
 
-def register_commands(client: TelegramClient) -> None:
-    """Publish the command menu, once per language.
+def register_commands(client: TelegramClient) -> bool:
+    """Publish the command menu and report whether every scope took it.
 
-    Advisory: a bot that cannot advertise its menu still answers when asked, so a failure here is
-    logged and the loop starts anyway.
+    The language-less scope is written too, not just one list per SUPPORTED language: Telegram
+    resolves a user's menu as language-specific list first, language-less list second, so without
+    it every client outside `SUPPORTED` — the ones `resolve_language` deliberately answers in
+    English — is offered no commands at all.
+
+    Advisory: a bot that cannot advertise its menu still answers when asked, so a failure is
+    logged and the caller retries later instead of the worker refusing to start.
     """
-    for language in SUPPORTED:
+    published = True
+    for language in (None, *SUPPORTED):
+        scope = language or "default"
         commands = [
-            {"command": name, "description": t(language, key)}
+            {"command": name, "description": t(language or DEFAULT, key)}
             for name, key in bot_commands.COMMANDS
         ]
         try:
             client.set_my_commands(commands, language_code=language)
+        except TelegramRetryAfter as exc:
+            # Firing the next scope straight into an active rate limit would lose that one too.
+            logger.warning("rate limited publishing the %s menu, waiting %ss", scope, exc.seconds)
+            time.sleep(exc.seconds)
+            published = False
         except TelegramError:
-            logger.warning("could not publish the %s command menu", language)
+            logger.warning("could not publish the %s command menu", scope)
+            published = False
+    return published
+
+
+def republish_due(published: bool, last_attempt: float, now: float) -> bool:
+    """Whether the command menu is worth another attempt on this pass of the loop."""
+    return not published and now - last_attempt >= MENU_RETRY_SECONDS
 
 
 def tick(client: TelegramClient, now: datetime) -> int:
@@ -258,7 +281,8 @@ def run() -> None:
 
     wait_for_schema()
     client = build_client()
-    register_commands(client)
+    menu_published = register_commands(client)
+    last_menu_attempt = time.monotonic()
     logger.info("worker started, polling as @%s", settings.telegram_bot_username)
 
     offset: int | None = None
@@ -286,6 +310,12 @@ def run() -> None:
                     "polling still failing (%s in a row): %s; retrying in %ss", failures, exc, delay
                 )
             time.sleep(delay)
+
+        if republish_due(menu_published, last_menu_attempt, time.monotonic()):
+            last_menu_attempt = time.monotonic()
+            menu_published = register_commands(client)
+            if menu_published:
+                logger.info("command menu published")
 
         # Long polling returns immediately when updates are waiting, so pace delivery on its own
         # clock instead of letting a chatty chat turn it into a busy loop.

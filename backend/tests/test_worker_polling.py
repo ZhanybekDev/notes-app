@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.exc import OperationalError
 
 import scripts.worker as worker
+from app import bot_commands
 from app.models import User
 from app.telegram import TelegramError, TelegramRetryAfter
 from app.telegram_link import issue_link_code
@@ -258,22 +259,69 @@ class TestWaitForSchema:
 
 class TestMenuRegistration:
     # No fixture: these drive the client only, and building a schema for them would be waste.
-    def test_registers_every_language(self):
+    class Recorder:
+        def __init__(self, error: Exception | None = None):
+            self.calls: list[tuple[str | None, list[dict]]] = []
+            self.error = error
+
+        def set_my_commands(self, commands, language_code=None):
+            self.calls.append((language_code, commands))
+            if self.error is not None:
+                raise self.error
+
+    def test_registers_every_language_and_the_default_scope(self):
+        """Without the language-less list, a German client is offered no commands at all."""
         from app.bot_i18n import SUPPORTED
 
-        calls: list[str | None] = []
+        client = self.Recorder()
 
-        class Client:
-            def set_my_commands(self, commands, language_code=None):
-                calls.append(language_code)
+        assert worker.register_commands(client) is True
+        assert [language for language, _ in client.calls] == [None, *SUPPORTED]
 
-        worker.register_commands(Client())
+    def test_every_scope_advertises_every_command(self):
+        client = self.Recorder()
 
-        assert sorted(calls) == sorted(SUPPORTED)
+        worker.register_commands(client)
+
+        for _, commands in client.calls:
+            assert [entry["command"] for entry in commands] == [
+                name for name, _ in bot_commands.COMMANDS
+            ]
+            assert all(entry["description"].strip() for entry in commands)
+
+    def test_the_default_scope_is_described_in_the_fallback_language(self):
+        from app.bot_i18n import DEFAULT, t
+
+        client = self.Recorder()
+
+        worker.register_commands(client)
+
+        default_scope = next(commands for language, commands in client.calls if language is None)
+        assert default_scope[0]["description"] == t(DEFAULT, bot_commands.COMMANDS[0][1])
 
     def test_a_failed_registration_does_not_stop_the_worker(self):
-        class Client:
-            def set_my_commands(self, commands, language_code=None):
-                raise TelegramError("nope")
+        client = self.Recorder(error=TelegramError("nope"))
 
-        worker.register_commands(Client())  # must not raise
+        # Reported as unpublished so the caller can try again; never raised.
+        assert worker.register_commands(client) is False
+
+    def test_a_rate_limit_is_waited_out_instead_of_firing_the_next_scope_into_it(self, monkeypatch):
+        slept: list[int] = []
+        monkeypatch.setattr(worker.time, "sleep", lambda seconds: slept.append(seconds))
+        client = self.Recorder(error=TelegramRetryAfter(3))
+
+        assert worker.register_commands(client) is False
+        assert slept == [3, 3, 3]
+
+    @pytest.mark.parametrize(
+        ("published", "elapsed", "expected"),
+        [
+            (True, worker.MENU_RETRY_SECONDS * 2, False),  # nothing to retry
+            (False, 0, False),  # too soon
+            (False, worker.MENU_RETRY_SECONDS - 1, False),
+            (False, worker.MENU_RETRY_SECONDS, True),
+        ],
+    )
+    def test_republish_due(self, published, elapsed, expected):
+        """A one-shot at startup left the menu unpublished until somebody restarted the container."""
+        assert worker.republish_due(published, 1000.0, 1000.0 + elapsed) is expected

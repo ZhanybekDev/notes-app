@@ -44,6 +44,24 @@ class BotReply:
     text: str
 
 
+class BadTimezone(Exception):
+    """The account's timezone string does not name a real zone."""
+
+
+def _zone(name: str) -> ZoneInfo:
+    """Resolve a zone name, collapsing both ways it can fail into one.
+
+    `ZoneInfo` raises `ZoneInfoNotFoundError` for an unknown key and `ValueError` for a malformed
+    one — empty, absolute, or not normalised. Catching only the first let the second escape into
+    the polling loop, which catches neither, killing the worker for every user over one bad row.
+    Narrowing to this call keeps the guard from swallowing an unrelated `ValueError` further out.
+    """
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise BadTimezone(name) from exc
+
+
 def _parse(text: str) -> tuple[str | None, str | None]:
     """Split `/command@bot argument` into its command and its argument."""
     parts = text.strip().split(maxsplit=1)
@@ -54,15 +72,29 @@ def _parse(text: str) -> tuple[str | None, str | None]:
     return command, argument
 
 
-def _help(language: str) -> str:
+def _help(language: str, *, linked: bool) -> str:
     lines = [t(language, "help_intro"), ""]
     lines += [f"/{name} — {t(language, key)}" for name, key in COMMANDS]
+    if not linked:
+        # The menu button reaches this list without ever passing through the deep link, so an
+        # unbound chat is told what to do here rather than after failing every command in it.
+        lines += ["", t(language, "start_without_code")]
     return "\n".join(lines)
 
 
-def _start(db: Session, chat_id: int, code: str | None, language: str, username: str | None) -> str:
+def _start(
+    db: Session,
+    chat_id: int,
+    code: str | None,
+    language: str,
+    username: str | None,
+    *,
+    user: User | None,
+) -> str:
     if code is None:
-        return t(language, "start_without_code")
+        # Telegram sends a bare /start from the START button in every fresh chat view, so an
+        # already-bound chat must not be sent off to generate a code it does not need.
+        return _help(language, linked=user is not None)
     result, user = telegram_link.redeem_code(
         db, code=code, chat_id=chat_id, telegram_username=username, language=language
     )
@@ -76,7 +108,7 @@ def _start(db: Session, chat_id: int, code: str | None, language: str, username:
 
 def _today_for(user: User, now: datetime) -> date:
     """Today from the account's point of view, which is the only one that matters here."""
-    return now.astimezone(ZoneInfo(user.timezone)).date()
+    return now.astimezone(_zone(user.timezone)).date()
 
 
 def _titles(db: Session, user: User, first: date, last: date) -> tuple[list[Note], int]:
@@ -129,6 +161,22 @@ def _upcoming(db: Session, user: User, language: str, now: datetime) -> str:
     return _render(language, t(language, "upcoming_header"), notes, total, dated=True)
 
 
+def _reminder_state(user: User, language: str) -> str:
+    """What will actually happen, not just what the flag says.
+
+    `reminders.materialize_due` skips any user whose zone will not resolve and logs it, so for
+    those accounts no row is ever created and nothing ever fires. Reporting "Reminders: on" there
+    would be a plain untruth from the one command whose job is to say how the chat stands.
+    """
+    if not user.notifications_enabled:
+        return t(language, "status_off")
+    try:
+        _zone(user.timezone)
+    except BadTimezone:
+        return t(language, "status_zone_broken", zone=user.timezone)
+    return t(language, "status_on")
+
+
 def _status(user: User, language: str) -> str:
     lines = [
         t(language, "status_linked", username=user.telegram_username)
@@ -136,7 +184,7 @@ def _status(user: User, language: str) -> str:
         else t(language, "status_linked_no_username"),
         t(language, "status_timezone", zone=user.timezone),
         t(language, "status_time", time=user.reminder_time.strftime("%H:%M")),
-        t(language, "status_on" if user.notifications_enabled else "status_off"),
+        _reminder_state(user, language),
     ]
     return "\n".join(lines)
 
@@ -167,13 +215,22 @@ def handle_update(
     sender = message.get("from") or {}
     language = resolve_language(sender.get("language_code"))
     command, argument = _parse(text)
+    user = telegram_link.user_for_chat(db, chat_id)
 
     if command == "start":
-        return BotReply(chat_id, _start(db, chat_id, argument, language, sender.get("username")))
-    if command not in _COMMAND_NAMES or command == "help":
-        return BotReply(chat_id, _help(language))
+        return BotReply(
+            chat_id, _start(db, chat_id, argument, language, sender.get("username"), user=user)
+        )
 
-    user = telegram_link.user_for_chat(db, chat_id)
+    if user is not None and user.telegram_language != language:
+        # Telegram reports the client language on every update, but it used to be stored only at
+        # link time, so a user who switched languages afterwards got answers in the new one and
+        # reminders in the old one until they unlinked and relinked.
+        user.telegram_language = language
+        db.commit()
+
+    if command not in _COMMAND_NAMES or command == "help":
+        return BotReply(chat_id, _help(language, linked=user is not None))
     if user is None:
         return BotReply(chat_id, t(language, "start_without_code"))
 
@@ -182,7 +239,7 @@ def handle_update(
             return BotReply(chat_id, _today(db, user, language, now))
         if command == "upcoming":
             return BotReply(chat_id, _upcoming(db, user, language, now))
-    except ZoneInfoNotFoundError:
+    except BadTimezone:
         # Only reachable if the column was edited outside the API, which validates it. Saying so
         # beats letting it escape into the polling loop, which does not catch this.
         return BotReply(chat_id, t(language, "bad_timezone", zone=user.timezone))
@@ -191,4 +248,11 @@ def handle_update(
         return BotReply(chat_id, _status(user, language))
     if command == "pause":
         return BotReply(chat_id, _switch(db, user, language, on=False))
-    return BotReply(chat_id, _switch(db, user, language, on=True))
+    if command == "resume":
+        return BotReply(chat_id, _switch(db, user, language, on=True))
+
+    # Unreachable while every name in COMMANDS has a branch above. It used to be a bare fall-through
+    # to /resume, which would have silently un-paused an account the day a seventh command was
+    # advertised — COMMANDS feeds setMyCommands and /help, so the menu would offer it immediately.
+    logger.error("advertised command /%s has no handler", command)
+    return BotReply(chat_id, _help(language, linked=True))

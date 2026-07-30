@@ -26,6 +26,28 @@ def test_issue_link_code_replaces_previous(db_session):
     )
 
 
+def test_a_code_is_burned_on_first_use(db_session):
+    """A forwarded deep link would otherwise let a second chat take over the account."""
+    user = make_user(db_session)
+    code, _ = issue_link_code(db_session, user)
+
+    assert (
+        redeem_code(db_session, code=code, chat_id=100, telegram_username=None, language="en")[0]
+        is LinkResult.LINKED
+    )
+    db_session.refresh(user)
+    assert user.telegram_link_code is None
+    assert user.telegram_link_code_expires_at is None
+
+    result, _ = redeem_code(
+        db_session, code=code, chat_id=999, telegram_username=None, language="en"
+    )
+
+    assert result is LinkResult.UNKNOWN_OR_EXPIRED
+    db_session.refresh(user)
+    assert user.telegram_chat_id == 100
+
+
 def test_unlink_clears_binding_and_disables_notifications(db_session):
     user = make_user(db_session)
     code, _ = issue_link_code(db_session, user)

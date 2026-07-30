@@ -94,12 +94,49 @@ class TestRouting:
 
         assert "/today" in reply.text
 
+    def test_help_tells_an_unlinked_chat_how_to_connect(self, db_session):
+        """The menu button reaches /help without ever passing through the deep link."""
+        reply = bot_commands.handle_update(db_session, message("/help"))
+
+        assert "Settings" in reply.text
+
+    def test_help_does_not_nag_a_linked_chat(self, db_session):
+        link(db_session, make_user(db_session))
+
+        reply = bot_commands.handle_update(db_session, message("/help"))
+
+        assert "Settings" not in reply.text
+
+    def test_an_advertised_command_without_a_handler_does_not_resume(self, db_session, monkeypatch):
+        """The router used to fall through to /resume, so a new command would un-pause silently."""
+        user = link(db_session, make_user(db_session))
+        bot_commands.handle_update(db_session, message("/pause"))
+        monkeypatch.setattr(
+            bot_commands, "COMMANDS", (*bot_commands.COMMANDS, ("week", "cmd_help"))
+        )
+        monkeypatch.setattr(bot_commands, "_COMMAND_NAMES", bot_commands._COMMAND_NAMES | {"week"})
+
+        reply = bot_commands.handle_update(db_session, message("/week"))
+
+        assert "/today" in reply.text
+        db_session.refresh(user)
+        assert user.notifications_enabled is False
+
 
 class TestStart:
     def test_start_without_a_code_explains_how_to_link(self, db_session):
         reply = bot_commands.handle_update(db_session, message("/start"))
 
         assert "Settings" in reply.text
+
+    def test_start_from_a_linked_chat_shows_what_the_bot_can_do(self, db_session):
+        """Telegram sends a bare /start from the START button, which every fresh chat view shows."""
+        link(db_session, make_user(db_session))
+
+        reply = bot_commands.handle_update(db_session, message("/start"))
+
+        assert "/today" in reply.text
+        assert "Settings" not in reply.text
 
     def test_valid_code_links_and_confirms(self, db_session):
         user = make_user(db_session)
@@ -112,6 +149,20 @@ class TestStart:
         assert user.telegram_chat_id == 100
         assert user.telegram_username == "alice_tg"
         assert user.notifications_enabled is True
+        # The deep link is a URL the user may have pasted or forwarded; redeeming it has to burn it.
+        assert user.telegram_link_code is None
+        assert user.telegram_link_code_expires_at is None
+
+    def test_a_redeemed_code_cannot_be_used_again(self, db_session):
+        user = make_user(db_session)
+        code, _ = issue_link_code(db_session, user)
+        bot_commands.handle_update(db_session, message(f"/start {code}"))
+
+        reply = bot_commands.handle_update(db_session, message(f"/start {code}", chat_id=999))
+
+        assert "expired" in reply.text
+        db_session.refresh(user)
+        assert user.telegram_chat_id == 100
 
     def test_expired_code_is_refused(self, db_session):
         user = make_user(db_session)
@@ -231,13 +282,26 @@ class TestListings:
 
         assert "Their today" in reply.text
 
-    def test_a_broken_zone_is_reported_not_crashed(self, db_session):
+    @pytest.mark.parametrize("zone", ["Mars/Olympus", "", "/etc/UTC", "Europe/../Europe/Berlin"])
+    def test_a_broken_zone_is_reported_not_crashed(self, db_session, zone):
+        """ZoneInfo raises ZoneInfoNotFoundError for one of these and ValueError for the rest."""
         user = make_user(db_session)
         link(db_session, user)
-        user.timezone = "Mars/Olympus"
+        user.timezone = zone
         db_session.commit()
 
         reply = bot_commands.handle_update(db_session, message("/today"))
+
+        assert "time zone" in reply.text.lower()
+
+    @pytest.mark.parametrize("zone", ["Mars/Olympus", ""])
+    def test_upcoming_reports_a_broken_zone_too(self, db_session, zone):
+        user = make_user(db_session)
+        link(db_session, user)
+        user.timezone = zone
+        db_session.commit()
+
+        reply = bot_commands.handle_update(db_session, message("/upcoming"))
 
         assert "time zone" in reply.text.lower()
 
@@ -295,3 +359,53 @@ class TestStatusAndSwitch:
         reply = bot_commands.handle_update(db_session, message("/status"))
 
         assert "off" in reply.text.lower()
+
+    @pytest.mark.parametrize("zone", ["Mars/Olympus", ""])
+    def test_status_does_not_claim_reminders_work_with_a_broken_zone(self, db_session, zone):
+        """materialize_due drops these users silently, so "Reminders: on" would be a plain lie."""
+        user = link(db_session, make_user(db_session))
+        user.timezone = zone
+        db_session.commit()
+
+        reply = bot_commands.handle_update(db_session, message("/status"))
+
+        assert "Reminders: on" not in reply.text
+        assert "time zone" in reply.text.lower()
+
+    def test_a_pause_still_reads_as_a_pause_when_the_zone_is_broken(self, db_session):
+        user = link(db_session, make_user(db_session))
+        bot_commands.handle_update(db_session, message("/pause"))
+        user.timezone = "Mars/Olympus"
+        db_session.commit()
+
+        reply = bot_commands.handle_update(db_session, message("/status"))
+
+        assert "Reminders: off" in reply.text
+
+
+class TestLanguageDrift:
+    def test_a_client_language_change_reaches_the_reminders(self, db_session):
+        """Answers followed the client immediately; reminders kept the language from link time."""
+        user = link(db_session, make_user(db_session), language="en")
+        assert user.telegram_language == "en"
+
+        bot_commands.handle_update(db_session, message("/status", language="ru"))
+
+        db_session.refresh(user)
+        assert user.telegram_language == "ru"
+
+    def test_an_unchanged_language_is_left_alone(self, db_session):
+        user = link(db_session, make_user(db_session), language="ru")
+
+        bot_commands.handle_update(db_session, message("/status", language="ru-RU"))
+
+        db_session.refresh(user)
+        assert user.telegram_language == "ru"
+
+    def test_an_unlinked_chat_writes_nothing(self, db_session):
+        user = make_user(db_session)
+
+        bot_commands.handle_update(db_session, message("/status", language="ru"))
+
+        db_session.refresh(user)
+        assert user.telegram_language is None

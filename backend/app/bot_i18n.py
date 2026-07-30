@@ -43,6 +43,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "status_time": "Reminder time: {time}",
         "status_on": "Reminders: on",
         "status_off": "Reminders: off",
+        "status_zone_broken": (
+            "Reminders: not firing — your time zone ({zone}) is not one I recognise. "
+            "Fix it in Settings."
+        ),
         "paused": "Reminders muted. /resume turns them back on.",
         "resumed": "Reminders are on.",
     },
@@ -76,6 +80,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "status_time": "Время напоминаний: {time}",
         "status_on": "Напоминания: включены",
         "status_off": "Напоминания: выключены",
+        "status_zone_broken": (
+            "Напоминания: не приходят — часовой пояс ({zone}) не распознан. "
+            "Поправьте его в настройках."
+        ),
         "paused": "Напоминания приглушены. /resume — включить обратно.",
         "resumed": "Напоминания включены.",
     },

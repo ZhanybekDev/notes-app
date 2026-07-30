@@ -142,6 +142,38 @@ class TestMaterialize:
         assert len(rows) == 1
         assert rows[0].status == Reminder.STATUS_PENDING
 
+    def test_does_not_revive_a_row_whose_moment_has_passed(self, db_session):
+        """Muting must not become deferral: /pause cancels, /resume must not replay the day."""
+        user = make_user(db_session)
+        make_note(db_session, user)
+        reminders.materialize_due(db_session, NOW)
+
+        user.notifications_enabled = False
+        db_session.commit()
+        reminders.cancel_stale(db_session, NOW)
+        assert db_session.query(Reminder).one().status == Reminder.STATUS_CANCELLED
+
+        user.notifications_enabled = True
+        db_session.commit()
+        # 20:00, well past the 09:00 the cancelled row was scheduled for but still inside the
+        # 24h backfill window, which is what used to let it come back.
+        assert reminders.materialize_due(db_session, NOW + timedelta(hours=14))[0] == 0
+        assert db_session.query(Reminder).one().status == Reminder.STATUS_CANCELLED
+
+    def test_still_revives_a_row_whose_moment_is_ahead(self, db_session):
+        user = make_user(db_session)
+        make_note(db_session, user)
+        reminders.materialize_due(db_session, NOW)
+        user.notifications_enabled = False
+        db_session.commit()
+        reminders.cancel_stale(db_session, NOW)
+
+        user.notifications_enabled = True
+        db_session.commit()
+
+        assert reminders.materialize_due(db_session, NOW + timedelta(hours=1))[0] == 1
+        assert db_session.query(Reminder).one().status == Reminder.STATUS_PENDING
+
     def test_never_revives_a_sent_row(self, db_session):
         user = make_user(db_session)
         note = make_note(db_session, user)

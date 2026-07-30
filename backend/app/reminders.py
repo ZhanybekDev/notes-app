@@ -175,6 +175,14 @@ def materialize_due(
 
         row = revivable.get((note.id, note.note_date))
         if row is not None:
+            if scheduled_for < now:
+                # A cancelled row is never resurrected into the past. `/pause` cancels the day's
+                # rows, and reviving them on `/resume` delivered everything the mute suppressed as
+                # one burst hours late — the opposite of what muting promises. Downtime backfill is
+                # unaffected: a row that was already pending is never cancelled while it is still
+                # inside the window, and a note that never got a row at all takes the insert path
+                # below, where BACKFILL_WINDOW still applies.
+                continue
             row.status = Reminder.STATUS_PENDING
             row.scheduled_for = scheduled_for
             row.attempts = 0
