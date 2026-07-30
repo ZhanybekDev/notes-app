@@ -35,7 +35,10 @@ const prefsStorage = {
   },
   setItem: (_name, value) => {
     const { lang, theme, tzSuggestionDismissed } = value.state;
-    write(KEYS.lang, lang);
+    // Only a language the user actually picked is written. Persisting the browser-derived default
+    // would freeze it: someone whose browser later switches languages would keep the old one
+    // forever, which is not how this behaved before the migration.
+    if (lang) write(KEYS.lang, lang);
     write(KEYS.theme, theme);
     if (tzSuggestionDismissed) write(KEYS.tzSuggestionDismissed, '1');
     else remove(KEYS.tzSuggestionDismissed);
@@ -53,15 +56,24 @@ const prefsStorage = {
  * Not a constant `'en'`: a Russian-speaking visitor with empty storage used to get Russian, and
  * losing that would only ever be noticed by the people it affects.
  */
-function browserLang() {
+export function browserLang() {
   const browser = (navigator.language || 'en').slice(0, 2);
   return LANGS.includes(browser) ? browser : 'en';
 }
 
+/**
+ * The language in force: what the user chose, or the browser's when they never did.
+ *
+ * Returns a string, so it is safe as a selector — an object built here would hand zustand a new
+ * reference on every render.
+ */
+export const selectLang = (state) => state.lang ?? browserLang();
+
 export const usePrefsStore = create(
   persist(
     (set) => ({
-      lang: browserLang(),
+      // null means "never chosen" — read through `selectLang`, which falls back to the browser.
+      lang: null,
       theme: 'system',
       tzSuggestionDismissed: false,
 

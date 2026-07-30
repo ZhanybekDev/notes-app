@@ -40,6 +40,9 @@ export default function Settings() {
   // Draft of the time input: unsaved keystrokes are this screen's state, not the app's.
   const logout = useSessionStore((s) => s.logout);
   const tzDismissed = usePrefsStore((s) => s.tzSuggestionDismissed);
+  // Storage the browser refuses is survivable but not invisible: the session will not outlive a
+  // reload, and the user deserves to know that before it happens to them.
+  const persistAvailable = useSessionStore((s) => s.persistAvailable);
   const dismissTzSuggestion = usePrefsStore((s) => s.dismissTzSuggestion);
 
   const [timeDraft, setTimeDraft] = useState('');
@@ -139,6 +142,9 @@ export default function Settings() {
         <h2>{t('settings.notificationsTitle')}</h2>
         <p className="settings-hint">{t('settings.notificationsHint')}</p>
 
+        {!persistAvailable && (
+          <div className="notice-warning">{t('settings.storageBlocked')}</div>
+        )}
         {prefs === null && prefsError === null && <div className="settings-hint">…</div>}
         {prefs !== null && !prefs.bot_configured && (
           <div className="notice-warning">{t('settings.botNotConfigured')}</div>

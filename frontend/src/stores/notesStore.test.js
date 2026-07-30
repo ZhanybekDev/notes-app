@@ -64,12 +64,78 @@ describe('load', () => {
     });
   });
 
+  it('asks for the next page and appends it', async () => {
+    const list = stubList([page([note(1)], 2), page([note(2)], 2)]);
+    await store().load();
+    await store().loadMore();
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ offset: PAGE_SIZE }));
+    expect(store().items.map((n) => n.id)).toEqual([1, 2]);
+  });
+
   it('puts a failed request into error instead of throwing', async () => {
     vi.spyOn(api, 'listNotes').mockRejectedValue(new Error('offline'));
     vi.spyOn(api, 'tags').mockResolvedValue([]);
     await store().load();
     expect(store().error).toBe('offline');
     expect(store().items).toEqual([]);
+  });
+});
+
+describe('error does not outlive the failure', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('clears the message once a load succeeds', async () => {
+    const list = vi.spyOn(api, 'listNotes').mockRejectedValueOnce(new Error('offline'));
+    vi.spyOn(api, 'tags').mockResolvedValue([]);
+    await store().load();
+    expect(store().error).toBe('offline');
+
+    list.mockResolvedValue(page([note(1)]));
+    await store().load();
+    // Otherwise the banner sits above a freshly loaded list — and, living in a store rather than the
+    // page, it would survive navigating away and back.
+    expect(store().error).toBeNull();
+  });
+
+  it.each([
+    ['remove', async () => store().remove(1)],
+    ['setPin', async () => store().setPin(note(1), true)],
+    ['bulkDelete', async () => store().bulkDelete([1])],
+  ])('%s starts from a clean error', async (_name, act) => {
+    stubList();
+    vi.spyOn(api, 'deleteNote').mockResolvedValue(null);
+    vi.spyOn(api, 'pinNote').mockResolvedValue(note(1));
+    vi.spyOn(api, 'bulkDelete').mockResolvedValue(null);
+    useNotesStore.setState({ error: 'stale' });
+    await act();
+    expect(store().error).toBeNull();
+  });
+});
+
+describe('out-of-order answers', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('ignores a response that a newer request has already superseded', async () => {
+    vi.spyOn(api, 'tags').mockResolvedValue([]);
+    let releaseStale;
+    const stale = new Promise((resolve) => {
+      releaseStale = () => resolve(page([note(1)], 1));
+    });
+    vi.spyOn(api, 'listNotes')
+      .mockReturnValueOnce(stale)
+      .mockResolvedValueOnce(page([note(2)], 1));
+
+    const first = store().load();
+    await store().load();
+    releaseStale();
+    await first;
+
+    // Typing fast fires a request per keystroke; the slowest answer must not win.
+    expect(store().items.map((n) => n.id)).toEqual([2]);
   });
 });
 

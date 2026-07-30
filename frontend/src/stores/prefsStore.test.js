@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { KEYS, usePrefsStore } from './prefsStore.js';
+import { KEYS, selectLang, usePrefsStore } from './prefsStore.js';
 
 const store = () => usePrefsStore.getState();
 
@@ -15,6 +15,17 @@ describe('preferences land in the legacy keys, one value each', () => {
     expect(localStorage.getItem(KEYS.tzSuggestionDismissed)).toBe('1');
     // Three entries, not one — persist's single-name model does not survive here.
     expect(localStorage.getItem('notes_prefs')).toBeNull();
+  });
+
+  it('does not write a language the user never picked', () => {
+    // Only the browser's default is in force here, and freezing it into storage would stop the app
+    // following the browser later on.
+    store().setTheme('dark');
+    expect(localStorage.getItem(KEYS.theme)).toBe('dark');
+    expect(localStorage.getItem(KEYS.lang)).toBeNull();
+
+    store().setLang('ru');
+    expect(localStorage.getItem(KEYS.lang)).toBe('ru');
   });
 
   it('hydrates from what the previous version left behind', () => {
@@ -35,7 +46,7 @@ describe('preferences land in the legacy keys, one value each', () => {
 
     usePrefsStore.persist.rehydrate();
 
-    expect(store().lang).toBe('en');
+    expect(selectLang(store())).toBe('en');
     expect(store().theme).toBe('system');
   });
 
@@ -63,18 +74,20 @@ describe('defaults', () => {
   }
 
   it('follows the browser language when nothing is stored', async () => {
-    const { usePrefsStore: fresh } = await reloadWithLanguage('ru-RU');
-    expect(fresh.getState().lang).toBe('ru');
+    const fresh = await reloadWithLanguage('ru-RU');
+    expect(fresh.selectLang(fresh.usePrefsStore.getState())).toBe('ru');
+    expect(fresh.usePrefsStore.getState().lang).toBeNull();
   });
 
   it('falls back to English for a language we do not have', async () => {
-    const { usePrefsStore: fresh } = await reloadWithLanguage('de-DE');
-    expect(fresh.getState().lang).toBe('en');
+    const fresh = await reloadWithLanguage('de-DE');
+    expect(fresh.selectLang(fresh.usePrefsStore.getState())).toBe('en');
   });
 
   it('rejects a language outside the catalogue', () => {
     store().setLang('kk');
-    expect(store().lang).toBe('en');
+    expect(selectLang(store())).toBe('en');
+    expect(store().lang).toBeNull();
   });
 });
 
@@ -95,7 +108,7 @@ describe('storage the browser refuses', () => {
     expect(() => store().setLang('ru')).not.toThrow();
     expect(() => store().setTheme('dark')).not.toThrow();
 
-    expect(store().lang).toBe('ru');
+    expect(selectLang(store())).toBe('ru');
     expect(store().theme).toBe('dark');
     expect(warn).toHaveBeenCalled();
   });

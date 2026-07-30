@@ -105,8 +105,8 @@ graph TD
   successor to the boundary `auth.js` used to hold. Read, write and remove never throw: a browser
   that refuses storage (private mode, enterprise policy) would otherwise take the app down at import
   time, because `persist` hydrates before the first render. The first failure logs once and flips a
-  flag the session store exposes as `persistAvailable`, so the degradation is visible rather than
-  silent.
+  flag the session store exposes as `persistAvailable`, which Settings turns into a warning: the
+  session will not survive a reload, and the user learns that before it happens rather than after.
 - **`theme.js`** — turns the stored preference into a `data-theme` attribute on `<html>`: `applyTheme(theme)` plus the subscription and `prefers-color-scheme` listener that `initTheme()` installs. The preference itself lives in `stores/prefsStore`.
 - **`i18n.jsx`** — the message catalogue plus `useLang()`, which reads the language from `stores/prefsStore` and returns the same `{ lang, setLang, t }` shape it always did. EN is the fallback when RU is missing. No Context: the app has none left.
 - **`hooks/useShortcuts.js`** — global `keydown` listener; ignores editable targets except for `Cmd/Ctrl+S`.
@@ -274,7 +274,8 @@ The full machine-readable schema lives at `backend/openapi.json`. Regenerate wit
   selection; `accountStore` holds the reminder settings shared by `/notes` and `/settings`;
   `sessionStore` holds the JWT and makes the session reactive; `prefsStore` holds language, theme and
   one dismissed hint, persisted to the three legacy keys through a fan-out adapter because `persist`
-  otherwise owns exactly one storage entry per store. Async actions reload what they invalidated, so
+  otherwise owns exactly one storage entry per store. A language the user never picked is not
+  written at all — `lang: null` means "follow the browser", read through `selectLang`. Async actions reload what they invalidated, so
   no caller has to remember. What stays in `useState`: form drafts, the calendar's visible month, the
   timer that dismisses the "saved" notice — state nobody else needs, plus one timer that must not
   outlive its screen.

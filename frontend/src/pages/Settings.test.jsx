@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 import Settings from './Settings.jsx';
 import { api } from '../api.js';
+import { useSessionStore } from '../stores/sessionStore.js';
 
 const LINKED = {
   timezone: 'Asia/Bishkek',
@@ -288,6 +289,26 @@ describe('Settings — Telegram reminders', () => {
 });
 
 describe('Settings — shared with the rest of the app', () => {
+  it('warns when the browser refuses to remember anything', async () => {
+    vi.spyOn(api, 'getSettings').mockResolvedValue(LINKED);
+    useSessionStore.setState({ persistAvailable: false });
+
+    renderSettings();
+
+    expect(
+      await screen.findByText(/browser is blocking site storage/i),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing when storage works', async () => {
+    vi.spyOn(api, 'getSettings').mockResolvedValue(LINKED);
+
+    renderSettings();
+    await screen.findByDisplayValue('Asia/Bishkek');
+
+    expect(screen.queryByText(/blocking site storage/i)).not.toBeInTheDocument();
+  });
+
   it('renders from the cached settings on a second visit, with no loading placeholder', async () => {
     vi.spyOn(api, 'getSettings').mockResolvedValue(LINKED);
 

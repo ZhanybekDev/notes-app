@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { MESSAGES, useLang } from './i18n.jsx';
+import { MESSAGES, initLang, useLang } from './i18n.jsx';
+import { usePrefsStore } from './stores/prefsStore.js';
 
 function Probe() {
   const { lang, setLang, t } = useLang();
@@ -66,5 +67,24 @@ describe('translation catalogue', () => {
     );
 
     expect(blank).toEqual([]);
+  });
+});
+
+describe('initLang', () => {
+  it('sets <html lang> before anything changes', () => {
+    usePrefsStore.setState({ lang: 'ru' });
+    document.documentElement.removeAttribute('lang');
+
+    initLang();
+
+    expect(document.documentElement.getAttribute('lang')).toBe('ru');
+  });
+
+  it('follows a later switch', () => {
+    initLang();
+    expect(document.documentElement.getAttribute('lang')).toBe('en');
+
+    usePrefsStore.getState().setLang('ru');
+    expect(document.documentElement.getAttribute('lang')).toBe('ru');
   });
 });

@@ -1,6 +1,4 @@
-import { THEMES, usePrefsStore } from './stores/prefsStore.js';
-
-export { THEMES };
+import { usePrefsStore } from './stores/prefsStore.js';
 
 function resolve(theme) {
   if (theme === 'system') {

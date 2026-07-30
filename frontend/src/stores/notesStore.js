@@ -18,6 +18,12 @@ const initialState = {
   error: null,
 };
 
+// Which list request is the current one. Typing three characters fires three requests and the
+// server may answer them out of order; without this the slowest answer wins and the list stops
+// matching the query in the box. Module scope, not state: only the ordering matters, and it must
+// survive the resets the test setup performs.
+let latestRequest = 0;
+
 /**
  * Notes list, its filters and the current selection.
  *
@@ -33,6 +39,7 @@ export const useNotesStore = create((set, get) => ({
 
   load: async (nextOffset = 0, append = false) => {
     const { search, activeTag, view } = get();
+    const ticket = ++latestRequest;
     try {
       const [page, tags] = await Promise.all([
         api.listNotes({
@@ -44,13 +51,19 @@ export const useNotesStore = create((set, get) => ({
         }),
         api.tags(),
       ]);
+      if (ticket !== latestRequest) return;
       set((prev) => ({
         total: page.total,
         items: append ? [...prev.items, ...page.items] : page.items,
         tags,
         offset: nextOffset,
+        // A success clears the previous failure. Leaving it would keep an "offline" banner above a
+        // freshly loaded list — and, now that this lives in a store rather than the page, would keep
+        // it there across navigation until the tab was reloaded.
+        error: null,
       }));
     } catch (err) {
+      if (ticket !== latestRequest) return;
       set({ error: err.message });
     }
   },
@@ -80,6 +93,7 @@ export const useNotesStore = create((set, get) => ({
 
   save: async (data) => {
     const { selected } = get();
+    set({ error: null });
     try {
       if (selected) {
         set({ selected: await api.updateNote(selected.id, data) });
@@ -93,6 +107,7 @@ export const useNotesStore = create((set, get) => ({
   },
 
   remove: async (id) => {
+    set({ error: null });
     try {
       await api.deleteNote(id);
       set({ selected: null });
@@ -103,6 +118,7 @@ export const useNotesStore = create((set, get) => ({
   },
 
   setPin: async (note, pin) => {
+    set({ error: null });
     try {
       set({ selected: pin ? await api.pinNote(note.id) : await api.unpinNote(note.id) });
       await get().load(0, false);
@@ -112,6 +128,7 @@ export const useNotesStore = create((set, get) => ({
   },
 
   setArchive: async (note, archive) => {
+    set({ error: null });
     try {
       const updated = archive ? await api.archiveNote(note.id) : await api.unarchiveNote(note.id);
       // Archiving from the active view moves the note out of sight, so the editor closes instead of
@@ -126,6 +143,7 @@ export const useNotesStore = create((set, get) => ({
 
   bulkDelete: async (ids) => {
     if (!ids.length) return;
+    set({ error: null });
     try {
       await api.bulkDelete(ids);
       set({ selectedIds: new Set(), bulkMode: false, selected: null });

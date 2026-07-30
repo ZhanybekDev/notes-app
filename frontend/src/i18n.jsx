@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { LANGS, usePrefsStore } from './stores/prefsStore.js';
+import { LANGS, selectLang, usePrefsStore } from './stores/prefsStore.js';
 
 // Re-exported so callers keep importing the language list from the i18n module they already use.
 export { LANGS };
@@ -101,6 +101,8 @@ export const MESSAGES = {
       notificationsHint: 'Get a Telegram message when a note reaches its date.',
       botNotConfigured:
         'The Telegram bot is not configured on this deployment. Set TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_USERNAME in backend/.env.',
+      storageBlocked:
+        'Your browser is blocking site storage, so this session and these preferences will be forgotten when the page reloads.',
       timezone: 'Time zone',
       timezoneSuggestion: 'Looks like your time zone is {zone}',
       timezoneSuggestionApply: 'Use it',
@@ -259,6 +261,8 @@ export const MESSAGES = {
       notificationsHint: 'Получайте сообщение в Telegram, когда наступает дата заметки.',
       botNotConfigured:
         'Telegram-бот не настроен на этом развёртывании. Задайте TELEGRAM_BOT_TOKEN и TELEGRAM_BOT_USERNAME в backend/.env.',
+      storageBlocked:
+        'Браузер блокирует хранилище сайта — сессия и эти настройки будут забыты при перезагрузке страницы.',
       timezone: 'Часовой пояс',
       timezoneSuggestion: 'Похоже, ваш часовой пояс — {zone}',
       timezoneSuggestionApply: 'Использовать',
@@ -358,7 +362,7 @@ export function translate(lang, key, vars) {
  * "Maximum update depth exceeded" rather than a wasted render.
  */
 export function useLang() {
-  const lang = usePrefsStore((s) => s.lang);
+  const lang = usePrefsStore(selectLang);
   const setLang = usePrefsStore((s) => s.setLang);
   const t = useMemo(() => (key, vars) => translate(lang, key, vars), [lang]);
   return { lang, setLang, t };
@@ -373,8 +377,8 @@ export function useLang() {
  */
 export function initLang() {
   const apply = (lang) => document.documentElement.setAttribute('lang', lang);
-  apply(usePrefsStore.getState().lang);
+  apply(selectLang(usePrefsStore.getState()));
   usePrefsStore.subscribe((state, previous) => {
-    if (state.lang !== previous.lang) apply(state.lang);
+    if (state.lang !== previous.lang) apply(selectLang(state));
   });
 }
