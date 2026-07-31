@@ -573,7 +573,12 @@
   border-color: var(--accent);
 }
 
-.checkbox-row {
+/* Scoped to `.settings-card label` deliberately: that rule stacks a caption above its input
+   (`flex-direction: column`) and outranks a bare `.checkbox-row` on specificity, so the plain
+   class silently lost and the checkbox rendered centred above its own caption. A checkbox is the
+   one control whose label belongs beside it, not over it. */
+.settings-card label.checkbox-row {
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: var(--space-2);
