@@ -1,0 +1,21 @@
+# `Dockerfile` ends in `COPY . .`, so anything listed here is something that must not become part
+# of an image. `.env` is first for that reason: an image carrying real credentials leaks them to
+# anyone who can pull or inspect it, and the running container gets its configuration from the
+# environment instead.
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+tests/
+*.sqlite
+*.db

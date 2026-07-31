@@ -1,3 +1,14 @@
+# node_modules is the important line: the host copy is resolved for the developer's machine, and
+# copying it into the build would both bloat the context and let platform-specific binaries
+# shadow the ones `npm ci` installs for the image's architecture.
 node_modules
 dist
 .vite
+coverage
+
+.env
+.env.*
+!.env.example
+
+*.log
+.DS_Store

@@ -22,6 +22,18 @@ coverage/
 docker-compose.override.yml
 docker-compose.override.*.yml
 
+# Deployment. The real values live on the server and on the machine that deploys; only the
+# `.example` files, which contain placeholders, belong in the repository.
+.env.*
+!.env.example
+!.env.prod.example
+.deploy.env
+!.deploy.env.example
+
+# Working notes of the AI agent used on this branch: plans, research, review archives.
+# Useful while the work is in flight, noise in someone else's repository afterwards.
+.claude/
+
 # Misc
 .DS_Store
 *.log

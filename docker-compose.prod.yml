@@ -1,0 +1,87 @@
+# Production stack for the home server. Deployed by ./deploy.sh into ~/notes_app.
+#
+# Differences from the development `docker-compose.yml` that matter:
+#   - no bind mounts of source, so a container runs the code that was built into its image;
+#   - no `--reload`, which forks a reloader process and watches the filesystem for nothing;
+#   - the frontend is a built bundle behind nginx, not a Vite dev server;
+#   - every secret comes from the `.env` file that lives only on the server (chmod 600) and is
+#     git-ignored. No credential appears in this file.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml logs -f worker
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: notes
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: notes
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # No `ports:` entry on purpose. The database is reachable over the compose network by the two
+    # services that need it and is not published to the host, where the box already runs two other
+    # projects and is exposed through a public tunnel.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notes -d notes"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Pinned here rather than read from .env: the host is `db` only inside this network, and a
+      # stale localhost URL in .env would otherwise take the API down in a way that reads like a
+      # database fault. The password still has exactly one source — the .env value interpolated in.
+      DATABASE_URL: postgresql+psycopg2://notes:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/notes
+    depends_on:
+      db:
+        condition: service_healthy
+    # Migrations run here, before the API accepts traffic, and only in this service — the worker
+    # waits for the schema instead of racing to create it (see scripts/worker.py).
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://notes:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/notes
+    depends_on:
+      db:
+        condition: service_healthy
+    # Exactly one process may poll a given bot token — a second concurrent getUpdates is answered
+    # with 409 Conflict. Hence one replica here, and no local worker running against the same
+    # token while this one is up.
+    command: python -m scripts.worker
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Published on a high host port rather than 80, so the stack coexists with whatever else
+      # the host serves, and the reverse proxy in front maps the hostname to it.
+      - "8091:80"
+
+volumes:
+  db_data:

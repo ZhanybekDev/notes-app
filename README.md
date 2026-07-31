@@ -9,6 +9,10 @@
 
 Всё существенное — здесь, ссылки ведут в подробности. Английское описание проекта ниже по файлу.
 
+**Живой инстанс: https://notes.ssi-dev.com** — вход `demo` / `demo1234`, ставить ничего не нужно.
+Бот `@maddev_test_bot` подключён к нему же: Настройки → «Подключить Telegram» выдаст ссылку,
+после неё напоминания приходят из этого инстанса. Как он развёрнут — [ниже](#deployment).
+
 ### Что сделано
 
 | Волна | Что | Где смотреть |
@@ -17,7 +21,7 @@
 | **Внутреннее** | состояние фронтенда на `zustand` (было 14 `useState` на странице и Context), переработка UI целиком — токены, слой отклика, индикаторы загрузки | `frontend/src/stores/`, `frontend/src/styles/` |
 | **Сверх задания** | публичные read-only ссылки на заметку, экспорт в markdown и zip | `backend/app/routers/public.py`, `backend/app/export.py` |
 
-Запуск: `make up && make seed` → http://localhost:5173, вход `demo` / `demo1234`.
+Запуск локально: `make up && make seed` → http://localhost:5173, вход тот же.
 Подробности, переменные окружения и траблшутинг — в [README.ru.md](README.ru.md).
 
 ### Решения, которые стоит проверить в первую очередь
@@ -85,6 +89,7 @@
 | [SUBMISSION.md](SUBMISSION.md) | ответы по заданию: почему так, что заметил в scaffold, что дальше, caveats |
 | [docs/architecture.md](docs/architecture.md) | устройство: слои, правила зависимостей, дерево модулей |
 | [docs/demo.md](docs/demo.md) | последовательность команд для демонстрации напоминаний |
+| [docker-compose.prod.yml](docker-compose.prod.yml) + [deploy.sh](deploy.sh) | прод-стек и выкатка: чем отличается от dev, где живут секреты |
 | [.claude/](.claude/) | планы, research и архивы ревью — по ним видно, как принимались решения |
 
 ### Проверки
@@ -175,9 +180,44 @@ make down        # stop the stack
 make clean       # stop and wipe the database volume
 ```
 
+## Deployment
+
+A live instance runs at **https://notes.ssi-dev.com**, deployed from `docker-compose.prod.yml`.
+
+```bash
+cp .deploy.env.example .deploy.env   # where to deploy — git-ignored
+./deploy.sh                          # upload, rebuild, migrate, health-check
+```
+
+What separates the production stack from the development one:
+
+- **No source is mounted.** A container runs the code baked into its image, so what was built is
+  what runs. The development stack bind-mounts the tree and runs `--reload`, which is right for
+  editing and wrong for anything else.
+- **The frontend is a built bundle behind nginx**, not a Vite dev server. nginx also proxies
+  `/api`, which keeps the browser on one origin — the same shape the Vite proxy gives locally, so
+  no CORS preflight exists in either environment. Its config falls back to `index.html`, without
+  which a shared `/s/<token>` link — the one URL strangers open — would 404.
+- **Secrets live only on the server**, in a `chmod 600` `.env` that is git-ignored and excluded
+  from both the rsync and the Docker build context (`.dockerignore`). The repository carries
+  `.env.prod.example` with placeholders. The database is not published to the host at all.
+- **The deploy script waits for `/healthz`** before reporting success. `up -d` returns once
+  containers start, which is before migrations finish — reporting then would mean a green deploy
+  and a 502 in the browser.
+
+The server address is read from the git-ignored `.deploy.env` rather than written into
+`deploy.sh`: a deploy script that hardcodes one publishes the layout of a private network to
+everyone who reads the repository.
+
+**One token, one worker.** The deployed worker long-polls continuously, and the Bot API answers a
+second concurrent `getUpdates` on the same token with `409 Conflict`. So a local `make up` sharing
+that token breaks both instances — updates go to whichever process asked last, and the live bot
+looks like it answers every other time. Local development needs its own bot from @BotFather.
+
 ## Layout
 
 - `backend/` — FastAPI + SQLAlchemy + Alembic, talks to Postgres.
 - `backend/scripts/worker.py` — Telegram long polling + reminder delivery, its own compose service.
 - `frontend/` — React + Vite.
-- `docker-compose.yml` — db + backend + worker + frontend.
+- `docker-compose.yml` — db + backend + worker + frontend (development).
+- `docker-compose.prod.yml` + `deploy.sh` — the production stack and the one command that ships it.
